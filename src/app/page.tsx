@@ -11,8 +11,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const formatDuration = (totalSeconds: number) => {
-  if (totalSeconds === undefined || totalSeconds === null) return "--";
+const calculateDuration = (start: string, end: string | null) => {
+  if (!end) return "--";
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+  const totalSeconds = Math.floor((endTime - startTime) / 1000);
+
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
@@ -197,7 +201,7 @@ export default function Dashboard() {
         <tr key={inc.id} className="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
         <td className="py-3 px-4">{format(new Date(inc.start_time), "MMM d, hh:mm:ss a")}</td>
         <td className="py-3 px-4">{inc.end_time ? format(new Date(inc.end_time), "MMM d, hh:mm:ss a") : <span className="text-red-400 font-semibold animate-pulse">ACTIVE</span>}</td>
-        <td className="py-3 px-4">{formatDuration(inc.duration_seconds)}</td>
+        <td className="py-3 px-4">{calculateDuration(inc.start_time, inc.end_time)}</td>
         <td className="py-3 px-4 font-mono text-red-400">{inc.peak_temperature}°C</td>
         </tr>
       ))
