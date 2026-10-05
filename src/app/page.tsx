@@ -44,6 +44,10 @@ export default function Dashboard() {
   const [latest, setLatest] = useState<any>(null);
   const [isOffline, setIsOffline] = useState(true);
 
+  // Rolling window bounds for the X-axis (e.g., last 60 minutes)
+  const nowMs = new Date().getTime();
+  const windowStartMs = nowMs - 60 * 60 * 1000;
+
   useEffect(() => {
     const fetchData = async () => {
       const { data: tData } = await supabase
@@ -152,10 +156,11 @@ export default function Dashboard() {
     <XAxis
     dataKey="timeMs"
     type="number"
-    domain={['dataMin', 'dataMax']}
+    domain={[windowStartMs, 'dataMax']}
+    scale="time"
     stroke="#94a3b8"
     tickFormatter={(ms: any) => format(new Date(Number(ms)), "HH:mm")}
-    tickCount={10}
+    tickCount={8}
     />
     <YAxis
     stroke="#94a3b8"
