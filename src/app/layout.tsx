@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cold Chain Monitor",
+  title: "Freeze Pharma",
   description: "Real-time thermal telemetry and breach incident logging.",
 };
 

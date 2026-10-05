@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <!-- Dark Slate Background matching the dashboard -->
+    <rect width="512" height="512" rx="128" fill="#0f172a"/>
+
+    <!-- Outer Thermometer Housing -->
+    <path d="M256 80 C238 80 224 94 224 112 V306 C205 321 192 344 192 368 C192 403 221 432 256 432 C291 432 320 403 320 368 C320 344 307 321 288 306 V112 C288 94 274 80 256 80 Z" stroke="#3b82f6" stroke-width="32" fill="none" stroke-linejoin="round"/>
+
+    <!-- Internal Fluid / Temperature Indicator (Cold Blue) -->
+    <circle cx="256" cy="368" r="32" fill="#3b82f6"/>
+    <rect x="240" y="200" width="32" height="168" fill="#3b82f6"/>
+
+    <!-- Temperature Scale Marks -->
+    <path d="M288 160 H312 M288 208 H312 M288 256 H312" stroke="#3b82f6" stroke-width="12" stroke-linecap="round"/>
+
+    <!-- Medical/Cold-Chain Accents -->
+    <path d="M128 256 H176 M336 256 H384 M256 128 V176" stroke="#60a5fa" stroke-width="24" stroke-linecap="round"/>
+</svg>

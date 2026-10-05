@@ -93,7 +93,7 @@ export default function Dashboard() {
 
     <div className={`p-4 rounded-lg flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500`}>
     <div>
-    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Cold Chain Monitor</h1>
+    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Freeze Pharma</h1>
     <p className="text-white/80 font-medium text-sm sm:text-base">
     {isOffline ? "SYSTEM OFFLINE - WATCHDOG TRIGGERED" : `SYSTEM STATUS: ${latest?.status || "INITIALIZING"}`}
     </p>
