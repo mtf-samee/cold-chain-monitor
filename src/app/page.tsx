@@ -172,7 +172,7 @@ export default function Dashboard() {
     y={8.0}
     stroke="#ef4444"
     strokeDasharray="3 3"
-    label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopRight", offset: 10 }}
+    label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }}
     />
     <ReferenceLine
     y={2.0}
