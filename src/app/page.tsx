@@ -145,9 +145,9 @@ export default function Dashboard() {
     <Activity size={20} className="text-blue-400" /> Temperature Trend
     </h2>
     <div className="w-full overflow-x-auto pb-4">
-    <div className="h-80 min-w-[600px] md:min-w-full">
+    <div className="h-80 min-w-[700px]">
     <ResponsiveContainer width="100%" height="100%">
-    <LineChart data={telemetry} margin={{ top: 5, right: 20, bottom: 5, left: -20 }}>
+    <LineChart data={telemetry} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
     <XAxis
     dataKey="timeMs"
@@ -155,21 +155,31 @@ export default function Dashboard() {
     domain={['dataMin', 'dataMax']}
     stroke="#94a3b8"
     tickFormatter={(ms: any) => format(new Date(Number(ms)), "HH:mm")}
-    tickCount={8}
+    tickCount={10}
     />
     <YAxis
     stroke="#94a3b8"
     domain={[
-      (dataMin: number) => Math.min(0, Math.floor(dataMin - 2)),
-          (dataMax: number) => Math.max(12, Math.ceil(dataMax + 2))
+      (dataMin: number) => Math.min(-2, Math.floor(dataMin - 3)),
+          (dataMax: number) => Math.max(12, Math.ceil(dataMax + 3))
     ]}
     />
     <Tooltip
     contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#f8fafc' }}
     labelFormatter={(label: any) => format(new Date(Number(label)), "PP pp")}
     />
-    <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft" }} />
-    <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomLeft" }} />
+    <ReferenceLine
+    y={8.0}
+    stroke="#ef4444"
+    strokeDasharray="3 3"
+    label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopRight", offset: 10 }}
+    />
+    <ReferenceLine
+    y={2.0}
+    stroke="#ef4444"
+    strokeDasharray="3 3"
+    label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }}
+    />
     <Line type="monotone" dataKey="temperature" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: "#3b82f6", strokeWidth: 0 }} activeDot={{ r: 6 }} />
     </LineChart>
     </ResponsiveContainer>
