@@ -61,13 +61,13 @@ export default function Dashboard() {
       if (tData && tData.length > 0) {
         const formatted = [...tData].reverse().map(d => ({
           ...d,
-          timeMs: new Date(d.created_at).getTime()
+          timeMs: new Date(String(d.created_at)).getTime()
         }));
 
         setTelemetry(formatted);
         setLatest(tData[0]);
 
-        const lastPing = new Date(tData[0].created_at).getTime();
+        const lastPing = new Date(String(tData[0].created_at)).getTime();
         const now = new Date().getTime();
         setIsOffline(now - lastPing > 210000);
       }
@@ -133,9 +133,9 @@ export default function Dashboard() {
     <Clock size={20} />
     </div>
     <div className="text-lg sm:text-xl font-medium mt-3">
-    {latest ? format(new Date(latest.created_at), "MMM d, yyyy") : "--"}
+    {latest ? format(new Date(String(latest.created_at)), "MMM d, yyyy") : "--"}
     <br />
-    {latest ? format(new Date(latest.created_at), "hh:mm:ss a") : "--"}
+    {latest ? format(new Date(String(latest.created_at)), "hh:mm:ss a") : "--"}
     </div>
     </div>
     </div>
@@ -154,7 +154,7 @@ export default function Dashboard() {
     type="number"
     domain={['dataMin', 'dataMax']}
     stroke="#94a3b8"
-    tickFormatter={(ms) => format(new Date(ms), "HH:mm")}
+    tickFormatter={(ms: any) => format(new Date(Number(ms)), "HH:mm")}
     tickCount={8}
     />
     <YAxis
@@ -166,7 +166,7 @@ export default function Dashboard() {
     />
     <Tooltip
     contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#f8fafc' }}
-    labelFormatter={(ms) => format(new Date(ms), "PP pp")}
+    labelFormatter={(label: any) => format(new Date(Number(label)), "PP pp")}
     />
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft" }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomLeft" }} />
@@ -199,8 +199,8 @@ export default function Dashboard() {
     ) : (
       incidents.map((inc) => (
         <tr key={inc.id} className="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
-        <td className="py-3 px-4">{format(new Date(inc.start_time), "MMM d, hh:mm:ss a")}</td>
-        <td className="py-3 px-4">{inc.end_time ? format(new Date(inc.end_time), "MMM d, hh:mm:ss a") : <span className="text-red-400 font-semibold animate-pulse">ACTIVE</span>}</td>
+        <td className="py-3 px-4">{format(new Date(String(inc.start_time)), "MMM d, hh:mm:ss a")}</td>
+        <td className="py-3 px-4">{inc.end_time ? format(new Date(String(inc.end_time)), "MMM d, hh:mm:ss a") : <span className="text-red-400 font-semibold animate-pulse">ACTIVE</span>}</td>
         <td className="py-3 px-4">{calculateDuration(inc.start_time, inc.end_time)}</td>
         <td className="py-3 px-4 font-mono text-red-400">{inc.peak_temperature}°C</td>
         </tr>
