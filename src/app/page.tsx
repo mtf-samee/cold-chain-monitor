@@ -13,10 +13,7 @@ const supabase = createClient(
 
 const calculateDuration = (start: string, end: string | null) => {
   if (!end) return "--";
-  const startTime = new Date(start).getTime();
-  const endTime = new Date(end).getTime();
-  const totalSeconds = Math.floor((endTime - startTime) / 1000);
-
+  const totalSeconds = Math.floor((new Date(end).getTime() - new Date(start).getTime()) / 1000);
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
@@ -25,17 +22,12 @@ const calculateDuration = (start: string, end: string | null) => {
   if (h > 0) parts.push(`${h} hr`);
   if (m > 0) parts.push(`${m} min`);
   if (s > 0 || parts.length === 0) parts.push(`${s} sec`);
-
   return parts.join(' ');
 };
 
 const getBatteryPercentage = (voltage: number) => {
   if (!voltage) return "--";
-  const minV = 3.3;
-  const maxV = 4.2;
-  let percentage = Math.round(((voltage - minV) / (maxV - minV)) * 100);
-  percentage = Math.max(0, Math.min(100, percentage));
-  return `${percentage}%`;
+  return `${Math.max(0, Math.min(100, Math.round(((voltage - 3.3) / 0.9) * 100)))}%`;
 };
 
 export default function Dashboard() {
@@ -43,13 +35,13 @@ export default function Dashboard() {
   const [incidents, setIncidents] = useState<any[]>([]);
   const [latest, setLatest] = useState<any>(null);
   const [isOffline, setIsOffline] = useState(true);
-
-  // Rolling window bounds for the X-axis (e.g., last 60 minutes)
-  const nowMs = new Date().getTime();
-  const windowStartMs = nowMs - 60 * 60 * 1000;
+  const [nowMs, setNowMs] = useState<number>(new Date().getTime());
 
   useEffect(() => {
     const fetchData = async () => {
+      const currentMs = new Date().getTime();
+      setNowMs(currentMs);
+
       const { data: tData } = await supabase
       .from("telemetry")
       .select("*")
@@ -72,8 +64,7 @@ export default function Dashboard() {
         setLatest(tData[0]);
 
         const lastPing = new Date(String(tData[0].created_at)).getTime();
-        const now = new Date().getTime();
-        setIsOffline(now - lastPing > 210000);
+        setIsOffline(currentMs - lastPing > 210000);
       }
 
       if (iData) setIncidents(iData);
@@ -83,6 +74,12 @@ export default function Dashboard() {
       const interval = setInterval(fetchData, 10000);
       return () => clearInterval(interval);
   }, []);
+
+  const windowStartMs = nowMs - 3600000;
+
+  let firstVisibleIndex = telemetry.findIndex(d => d.timeMs >= windowStartMs);
+  if (firstVisibleIndex > 0) firstVisibleIndex -= 1;
+  const filteredTelemetry = firstVisibleIndex >= 0 ? telemetry.slice(firstVisibleIndex) : telemetry;
 
   const getStatusColor = (status: string, offline: boolean) => {
     if (offline) return "bg-gray-500";
@@ -151,7 +148,7 @@ export default function Dashboard() {
     <div className="w-full overflow-x-auto pb-4">
     <div className="h-80 min-w-[700px]">
     <ResponsiveContainer width="100%" height="100%">
-    <LineChart data={telemetry} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
+    <LineChart data={filteredTelemetry} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
     <XAxis
     dataKey="timeMs"
@@ -161,6 +158,7 @@ export default function Dashboard() {
     stroke="#94a3b8"
     tickFormatter={(ms: any) => format(new Date(Number(ms)), "HH:mm")}
     tickCount={8}
+    allowDataOverflow={true}
     />
     <YAxis
     stroke="#94a3b8"
