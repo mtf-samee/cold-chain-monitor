@@ -2,67 +2,75 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export async function POST(request: Request) {
-    const apiKey = request.headers.get('x-api-key');
-    if (apiKey !== process.env.API_SECRET_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+export async function POST(req: Request) {
     try {
-        const body = await request.json();
-        const { temperature, status, event_type, battery_voltage, duration_seconds, peak_temperature } = body;
+        const { temperature, battery_voltage } = await req.json();
 
-        const { error: telemetryError } = await supabase
-        .from('telemetry')
-        .insert([{ temperature, status, event_type, battery_voltage }]);
+        let status = 'SAFE';
+        if (temperature > 8.0 || temperature < 2.0) status = 'BREACH';
+        else if (temperature >= 7.1 || temperature <= 2.9) status = 'WARNING';
 
-        if (telemetryError) throw telemetryError;
+        // Check for an open incident
+        const { data: activeIncidents } = await supabase
+        .from('incidents')
+        .select('*')
+        .is('end_time', null)
+        .order('start_time', { ascending: false })
+        .limit(1);
 
-        if (event_type === 'BREACH_START') {
-            const { error: incidentError } = await supabase
-            .from('incidents')
-            .insert([{
-                start_time: new Date().toISOString(),
-                    peak_temperature: temperature
-            }]);
+        const activeIncident = activeIncidents?.[0];
+        let event_type = 'ROUTINE';
 
-            if (incidentError) throw incidentError;
+        if (activeIncident) {
+            const isColdBreach = activeIncident.peak_temperature < 2.0;
+            const isHotBreach = activeIncident.peak_temperature > 8.0;
 
-        } else if (event_type === 'BREACH_FIX') {
-            const { data: latestIncident, error: fetchError } = await supabase
-            .from('incidents')
-            .select('id')
-            .order('start_time', { ascending: false })
-            .limit(1)
-            .single();
+            // Hysteresis: Require definitive recovery to close breach
+            const recoveredFromCold = isColdBreach && temperature >= 2.5;
+            const recoveredFromHot = isHotBreach && temperature <= 7.5;
 
-            if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
-
-            if (latestIncident) {
-                const { error: updateError } = await supabase
+            if (recoveredFromCold || recoveredFromHot) {
+                event_type = 'BREACH_FIX';
+                await supabase
                 .from('incidents')
-                .update({
-                    end_time: new Date().toISOString(),
-                        duration_seconds,
-                        peak_temperature
-                })
-                .eq('id', latestIncident.id);
+                .update({ end_time: new Date().toISOString() })
+                .eq('id', activeIncident.id);
+            } else {
+                // Incident remains open; override minor warning/safe fluctuations during recovery
+                status = 'BREACH';
 
-                if (updateError) throw updateError;
+                // Update peak extreme (highest for hot, lowest for cold)
+                let newPeak = activeIncident.peak_temperature;
+                if (isHotBreach && temperature > activeIncident.peak_temperature) newPeak = temperature;
+                if (isColdBreach && temperature < activeIncident.peak_temperature) newPeak = temperature;
+
+                if (newPeak !== activeIncident.peak_temperature) {
+                    await supabase
+                    .from('incidents')
+                    .update({ peak_temperature: newPeak })
+                    .eq('id', activeIncident.id);
+                }
             }
+        } else if (status === 'BREACH') {
+            event_type = 'BREACH_START';
+            await supabase
+            .from('incidents')
+            .insert([{ peak_temperature: temperature, start_time: new Date().toISOString() }]);
         }
 
-        return NextResponse.json({ success: true }, { status: 201 });
-    } catch (error: any) {
-        console.error("DATABASE ERROR:", error);
-        return NextResponse.json({
-            error: 'Internal Server Error',
-            message: error.message || 'Unknown database error',
-            details: error
-        }, { status: 500 });
+        await supabase.from('telemetry').insert([{
+            temperature,
+            battery_voltage,
+            status,
+            event_type
+        }]);
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 }
