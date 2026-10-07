@@ -38,6 +38,9 @@ export default function Dashboard() {
   const [nowMs, setNowMs] = useState<number>(new Date().getTime());
 
   useEffect(() => {
+    // Updates the browser tab name
+    document.title = "Freeze Pharm";
+
     const fetchData = async () => {
       const currentMs = new Date().getTime();
       setNowMs(currentMs);
@@ -46,7 +49,7 @@ export default function Dashboard() {
       .from("telemetry")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(144);
+      .limit(4500);
 
       const { data: iData } = await supabase
       .from("incidents")
@@ -75,7 +78,7 @@ export default function Dashboard() {
       return () => clearInterval(interval);
   }, []);
 
-  const windowStartMs = nowMs - 3600000;
+  const windowStartMs = nowMs - 43200000;
 
   let firstVisibleIndex = telemetry.findIndex(d => d.timeMs >= windowStartMs);
   if (firstVisibleIndex > 0) firstVisibleIndex -= 1;
@@ -94,7 +97,7 @@ export default function Dashboard() {
 
     <div className={`p-4 rounded-lg flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500`}>
     <div>
-    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Freeze Pharma</h1>
+    <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Freeze Pharm</h1>
     <p className="text-white/80 font-medium text-sm sm:text-base">
     {isOffline ? "SYSTEM OFFLINE - WATCHDOG TRIGGERED" : `SYSTEM STATUS: ${latest?.status || "INITIALIZING"}`}
     </p>
