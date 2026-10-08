@@ -23,7 +23,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Explicit TypeScript Interfaces to fix Vercel build failures
+// Strict TypeScript interfaces to pass Vercel build
 interface Telemetry {
   id?: number;
   created_at: string;
@@ -38,6 +38,11 @@ interface Incident {
   start_time: string;
   end_time: string | null;
   peak_temperature: number;
+}
+
+interface HighlightState {
+  type: 'breach' | 'peak' | 'deep';
+  data: Incident | Telemetry;
 }
 
 const calculateDuration = (start: string, end: string | null) => {
@@ -73,45 +78,41 @@ export default function Dashboard() {
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
 
-  const [activeHighlight, setActiveHighlight] = useState<{ type: 'breach' | 'peak' | 'deep', data: any } | null>(null);
+  const [activeHighlight, setActiveHighlight] = useState<HighlightState | null>(null);
 
-  // Cross-reference navigation logic
-  const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: any) => {
-    chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Directly forces filter to zoom into the requested timestamp
+  const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: Incident | Telemetry) => {
+    if (type === 'breach') {
+      const inc = data as Incident;
+      const targetStart = new Date(inc.start_time).getTime();
+      const targetEnd = inc.end_time ? new Date(inc.end_time).getTime() : targetStart;
 
-    const targetStart = type === 'breach' ? new Date(data.start_time).getTime() : data.timeMs;
-    const targetEnd = type === 'breach' && data.end_time ? new Date(data.end_time).getTime() : targetStart;
-
-    const currentStart = telemetry.length > 0 ? telemetry[0].timeMs : new Date().getTime();
-    const currentEnd = telemetry.length > 0 ? telemetry[telemetry.length - 1].timeMs : new Date().getTime();
-
-    // If target is outside visible graph, auto-adjust filters to wrap the incident (±2 hours)
-    if (targetStart < currentStart || targetEnd > currentEnd) {
+      // Auto-zoom graph to ±4 hours around the incident
       setIsHistorical(true);
-      setCustomStart(format(new Date(targetStart - 7200000), "yyyy-MM-dd'T'HH:mm"));
-      setCustomEnd(format(new Date(targetEnd + 7200000), "yyyy-MM-dd'T'HH:mm"));
+      setCustomStart(format(new Date(targetStart - 14400000), "yyyy-MM-dd'T'HH:mm"));
+      setCustomEnd(format(new Date(targetEnd + 14400000), "yyyy-MM-dd'T'HH:mm"));
     }
 
     setActiveHighlight({ type, data });
+    chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  // Auto-scroll inside graph when telemetry updates or highlight changes
+  // Wait for new telemetry to load, then horizontally center the highlighted point
   useEffect(() => {
     if (activeHighlight && scrollContainerRef.current && telemetry.length > 0) {
       const container = scrollContainerRef.current;
       const minTime = telemetry[0].timeMs;
       const maxTime = telemetry[telemetry.length - 1].timeMs;
       const targetTime = activeHighlight.type === 'breach'
-  ? new Date(activeHighlight.data.start_time).getTime()
-  : activeHighlight.data.timeMs;
+  ? new Date((activeHighlight.data as Incident).start_time).getTime()
+  : (activeHighlight.data as Telemetry).timeMs;
 
   if (targetTime >= minTime && targetTime <= maxTime) {
     const ratio = (targetTime - minTime) / (maxTime - minTime);
     const maxScroll = container.scrollWidth - container.clientWidth;
-    // Small delay ensures render completion before smooth scrolling
     setTimeout(() => {
       container.scrollTo({ left: maxScroll * ratio, behavior: 'smooth' });
-    }, 100);
+    }, 300);
   }
     }
   }, [telemetry, activeHighlight]);
@@ -174,8 +175,7 @@ export default function Dashboard() {
       if (data && data.length > 0) {
         const latestData = { ...data[0], timeMs: new Date(String(data[0].created_at)).getTime() };
         setLatest(latestData);
-        const lastPing = latestData.timeMs;
-        setIsOffline(new Date().getTime() - lastPing > 210000);
+        setIsOffline(new Date().getTime() - latestData.timeMs > 210000);
       }
     };
 
@@ -221,10 +221,8 @@ export default function Dashboard() {
       score -= 10;
       const startMs = new Date(inc.start_time).getTime();
       const endMs = inc.end_time ? new Date(inc.end_time).getTime() : new Date().getTime();
-      const hours = (endMs - startMs) / 3600000;
-      score -= (hours * 2);
+      score -= ((endMs - startMs) / 3600000) * 2;
     });
-    const finalScore = Math.max(0, Math.round(score));
 
     let sum = 0, max = -999, min = 999;
     let maxPt: Telemetry | null = null, minPt: Telemetry | null = null;
@@ -236,8 +234,8 @@ export default function Dashboard() {
     });
 
     return {
-      healthScore: finalScore,
-      avgTemp: telemetry.length ? (sum / telemetry.length).toFixed(2) : "--",
+      healthScore: Math.max(0, Math.round(score)),
+                                                                                 avgTemp: telemetry.length ? (sum / telemetry.length).toFixed(2) : "--",
                                                                                  maxTemp: max !== -999 ? max.toFixed(2) : "--",
                                                                                  minTemp: min !== 999 ? min.toFixed(2) : "--",
                                                                                  maxPoint: maxPt,
@@ -278,26 +276,12 @@ export default function Dashboard() {
     return "bg-emerald-700";
   };
 
-  const getTempValueColor = (status: string | undefined, offline: boolean) => {
-    if (offline) return "text-slate-500";
-    if (status === "BREACH") return "text-red-500 animate-pulse";
-    if (status === "WARNING") return "text-yellow-500";
-    return "text-white";
-  };
-
-  const getTempIconColor = (status: string | undefined, offline: boolean) => {
-    if (offline) return "text-slate-500";
-    if (status === "BREACH") return "text-red-500";
-    if (status === "WARNING") return "text-yellow-500";
-    return "text-blue-400";
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans">
     <div className="max-w-7xl mx-auto space-y-6">
 
     {/* Persistent Header */}
-    <div className={`sticky top-0 sm:top-2 z-50 p-5 rounded-xl flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500 shadow-2xl border border-white/20 -mx-2 sm:mx-0`}>
+    <div className={`sticky top-0 sm:top-2 z-50 p-5 rounded-xl flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500 shadow-2xl border border-white/20 -mx-2 sm:mx-0 backdrop-blur-md`}>
     <div>
     <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-md">Freeze Pharm</h1>
     <p className="text-white/90 font-semibold text-sm sm:text-base mt-1">
@@ -312,9 +296,9 @@ export default function Dashboard() {
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative overflow-hidden">
     <div className="flex items-center justify-between mb-2 text-slate-400">
     <span className="font-bold tracking-wider text-xs uppercase">Current Temp</span>
-    <Activity size={20} className={getTempIconColor(latest?.status, isOffline)} />
+    <Activity size={20} className={isOffline ? "text-slate-500" : latest?.status === "BREACH" ? "text-red-500" : latest?.status === "WARNING" ? "text-yellow-500" : "text-blue-400"} />
     </div>
-    <div className={`text-4xl sm:text-5xl font-black mt-2 transition-colors duration-300 ${getTempValueColor(latest?.status, isOffline)}`}>
+    <div className={`text-4xl sm:text-5xl font-black mt-2 transition-colors duration-300 ${isOffline ? "text-slate-500" : latest?.status === "BREACH" ? "text-red-500 animate-pulse" : latest?.status === "WARNING" ? "text-yellow-500" : "text-white"}`}>
     {latest ? `${latest.temperature}°C` : "--"}
     </div>
     </div>
@@ -366,7 +350,7 @@ export default function Dashboard() {
     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Time Range</label>
     <select
     value={timeRange}
-    onChange={(e) => { setTimeRange(e.target.value); setIsHistorical(false); }}
+    onChange={(e) => { setTimeRange(e.target.value); setIsHistorical(false); setActiveHighlight(null); }}
     className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 transition-colors w-full sm:w-auto cursor-pointer"
     disabled={isHistorical}
     >
@@ -388,7 +372,7 @@ export default function Dashboard() {
     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mode</label>
     <select
     value={timeMode}
-    onChange={(e) => setTimeMode(e.target.value as "rolling" | "absolute")}
+    onChange={(e) => { setTimeMode(e.target.value as "rolling" | "absolute"); setActiveHighlight(null); }}
     className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 transition-colors w-full sm:w-auto cursor-pointer"
     disabled={isHistorical}
     >
@@ -402,7 +386,7 @@ export default function Dashboard() {
     type="checkbox"
     id="historyToggle"
     checked={isHistorical}
-    onChange={(e) => setIsHistorical(e.target.checked)}
+    onChange={(e) => { setIsHistorical(e.target.checked); setActiveHighlight(null); }}
     className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-900 cursor-pointer"
     />
     <label htmlFor="historyToggle" className="text-sm font-medium text-slate-300 select-none cursor-pointer w-full">Custom History</label>
@@ -416,7 +400,7 @@ export default function Dashboard() {
       type="datetime-local"
       value={customStart}
       onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-      onChange={(e) => setCustomStart(e.target.value)}
+      onChange={(e) => { setCustomStart(e.target.value); setActiveHighlight(null); }}
       className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 cursor-pointer w-full sm:w-auto"
       />
       </div>
@@ -426,7 +410,7 @@ export default function Dashboard() {
       type="datetime-local"
       value={customEnd}
       onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
-      onChange={(e) => setCustomEnd(e.target.value)}
+      onChange={(e) => { setCustomEnd(e.target.value); setActiveHighlight(null); }}
       className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 cursor-pointer w-full sm:w-auto"
       />
       </div>
@@ -477,7 +461,7 @@ export default function Dashboard() {
         key={inc.id}
         onClick={() => handleHighlight('breach', inc)}
         className={`border-b border-slate-800 cursor-pointer transition-all duration-200
-          ${activeHighlight?.data?.id === inc.id ? "bg-red-900/30 border-l-4 border-l-red-500 shadow-inner" : "hover:bg-slate-800 hover:scale-[1.01] border-l-4 border-l-transparent"}`}
+          ${activeHighlight?.data && 'id' in activeHighlight.data && activeHighlight.data.id === inc.id ? "bg-red-900/30 border-l-4 border-l-red-500 shadow-inner" : "hover:bg-slate-800 hover:scale-[1.01] border-l-4 border-l-transparent"}`}
           >
           <td className="py-3 px-4">{format(new Date(String(inc.start_time)), "MMM d, HH:mm:ss")}</td>
           <td className="py-3 px-4">{inc.end_time ? format(new Date(String(inc.end_time)), "MMM d, HH:mm:ss") : <span className="text-red-500 font-bold animate-pulse">ACTIVE</span>}</td>
@@ -519,9 +503,11 @@ export default function Dashboard() {
     domain={['dataMin', 'dataMax']}
     scale="time"
     stroke="#64748b"
-    tickFormatter={(ms: string | number) => {
+    tickFormatter={(ms) => {
+      const val = Number(ms);
+      if (isNaN(val)) return "";
       const isLongPeriod = timeRange === "1w" || timeRange === "2w" || timeRange.includes("mo") || timeRange.includes("y") || (isHistorical && customStart && customEnd && new Date(customEnd).getTime() - new Date(customStart).getTime() > 172800000);
-      return format(new Date(Number(ms)), isLongPeriod ? "MMM d" : "HH:mm");
+      return format(new Date(val), isLongPeriod ? "MMM d" : "HH:mm");
     }}
     tickCount={8}
     />
@@ -534,28 +520,28 @@ export default function Dashboard() {
     />
     <Tooltip
     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)' }}
-    labelFormatter={(label: string | number) => format(new Date(Number(label)), "PP pp")}
+    labelFormatter={(label) => format(new Date(Number(label)), "PP pp")}
     />
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }} />
 
     {activeHighlight?.type === 'breach' && activeHighlight.data && (
       <ReferenceArea
-      x1={new Date(activeHighlight.data.start_time).getTime()}
-      x2={activeHighlight.data.end_time ? new Date(activeHighlight.data.end_time).getTime() : new Date().getTime()}
+      x1={new Date((activeHighlight.data as Incident).start_time).getTime()}
+      x2={(activeHighlight.data as Incident).end_time ? new Date((activeHighlight.data as Incident).end_time!).getTime() : new Date().getTime()}
       fill="#ef4444" fillOpacity={0.25} stroke="#ef4444" strokeOpacity={0.5}
       />
     )}
     {activeHighlight?.type === 'peak' && activeHighlight.data && (
       <>
-      <ReferenceLine x={activeHighlight.data.timeMs} stroke="#ef4444" strokeDasharray="3 3" />
-      <ReferenceDot x={activeHighlight.data.timeMs} y={activeHighlight.data.temperature} r={8} fill="#ef4444" stroke="#fff" strokeWidth={2} />
+      <ReferenceLine x={(activeHighlight.data as Telemetry).timeMs} stroke="#ef4444" strokeDasharray="3 3" />
+      <ReferenceDot x={(activeHighlight.data as Telemetry).timeMs} y={(activeHighlight.data as Telemetry).temperature} r={8} fill="#ef4444" stroke="#fff" strokeWidth={2} />
       </>
     )}
     {activeHighlight?.type === 'deep' && activeHighlight.data && (
       <>
-      <ReferenceLine x={activeHighlight.data.timeMs} stroke="#3b82f6" strokeDasharray="3 3" />
-      <ReferenceDot x={activeHighlight.data.timeMs} y={activeHighlight.data.temperature} r={8} fill="#3b82f6" stroke="#fff" strokeWidth={2} />
+      <ReferenceLine x={(activeHighlight.data as Telemetry).timeMs} stroke="#3b82f6" strokeDasharray="3 3" />
+      <ReferenceDot x={(activeHighlight.data as Telemetry).timeMs} y={(activeHighlight.data as Telemetry).temperature} r={8} fill="#3b82f6" stroke="#fff" strokeWidth={2} />
       </>
     )}
 
