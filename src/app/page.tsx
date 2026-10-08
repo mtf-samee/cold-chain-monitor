@@ -41,12 +41,6 @@ const getBatteryPercentage = (voltage: number) => {
   return Math.max(0, Math.min(100, Math.round(((voltage - 3.3) / 0.9) * 100)));
 };
 
-const downsample = (data: any[], maxPoints: number) => {
-  if (data.length <= maxPoints) return data;
-  const step = Math.ceil(data.length / maxPoints);
-  return data.filter((_, i) => i % step === 0);
-};
-
 export default function Dashboard() {
   const chartRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -71,10 +65,8 @@ export default function Dashboard() {
   const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: any) => {
     setActiveHighlight({ type, data });
 
-    // 1. Vertical scroll to the chart container
     chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-    // 2. Calculate and execute Horizontal scroll inside the graph
     setTimeout(() => {
       if (scrollContainerRef.current && telemetry.length > 0) {
         const container = scrollContainerRef.current;
@@ -91,7 +83,7 @@ export default function Dashboard() {
           });
         }
       }
-    }, 400); // Wait 400ms for vertical scroll to settle
+    }, 400);
   };
 
   const resetToDefault = () => {
@@ -159,13 +151,14 @@ export default function Dashboard() {
     const fetchFilteredData = async () => {
       const { start, end } = getBounds();
 
+      // Changed to order DESCENDING first so we grab the newest data if the limit is reached, then expanded limit
       const { data: tData } = await supabase
       .from("telemetry")
       .select("*")
       .gte("created_at", start.toISOString())
       .lte("created_at", end.toISOString())
-      .order("created_at", { ascending: true })
-      .limit(10000);
+      .order("created_at", { ascending: false })
+      .limit(25000);
 
       const { data: iData } = await supabase
       .from("incidents")
@@ -175,7 +168,8 @@ export default function Dashboard() {
       .order("start_time", { ascending: false });
 
       if (tData) {
-        const formatted = tData.map(d => ({
+        // Reverse back to chronological order for the chart
+        const formatted = [...tData].reverse().map(d => ({
           ...d,
           timeMs: new Date(String(d.created_at)).getTime()
         }));
@@ -222,7 +216,24 @@ export default function Dashboard() {
     };
   }, [telemetry, incidents]);
 
-  const downsampledTelemetry = downsample(telemetry, 300);
+  // Smart Downsampling: Compresses flatlines but perfectly preserves breaches and peaks
+  const downsampledTelemetry = useMemo(() => {
+    if (telemetry.length <= 300) return telemetry;
+    const step = Math.ceil(telemetry.length / 300);
+    const resultMap = new Map();
+
+    telemetry.forEach((d, i) => {
+      if (i % step === 0 || d.status === 'BREACH' || d.status === 'WARNING') {
+        resultMap.set(d.timeMs, d);
+      }
+    });
+
+    if (maxPoint) resultMap.set(maxPoint.timeMs, maxPoint);
+    if (minPoint) resultMap.set(minPoint.timeMs, minPoint);
+
+    return Array.from(resultMap.values()).sort((a, b) => a.timeMs - b.timeMs);
+  }, [telemetry, maxPoint, minPoint]);
+
   const batteryPct = latest ? getBatteryPercentage(latest.battery_voltage) : 0;
 
   const renderBatteryIcon = () => {
@@ -500,7 +511,6 @@ export default function Dashboard() {
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }} />
 
-    {/* Dynamic Interactive Highlights */}
     {activeHighlight?.type === 'breach' && activeHighlight.data && (
       <ReferenceArea
       x1={new Date(activeHighlight.data.start_time).getTime()}
