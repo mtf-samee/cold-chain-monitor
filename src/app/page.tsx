@@ -79,31 +79,13 @@ export default function Dashboard() {
 
   const [activeHighlight, setActiveHighlight] = useState<HighlightState | null>(null);
 
-  // Auto-Zoom Logic
   const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: Incident | Telemetry) => {
-    let targetStart = 0;
-    let targetEnd = 0;
-
-    if (type === 'breach') {
-      const inc = data as Incident;
-      targetStart = new Date(inc.start_time).getTime();
-      targetEnd = inc.end_time ? new Date(inc.end_time).getTime() : targetStart;
-    } else {
-      const tel = data as Telemetry;
-      targetStart = tel.timeMs;
-      targetEnd = tel.timeMs;
-    }
-
-    // Force exact custom date filter (±2 hours)
-    setIsHistorical(true);
-    setCustomStart(format(new Date(targetStart - 7200000), "yyyy-MM-dd'T'HH:mm"));
-    setCustomEnd(format(new Date(targetEnd + 7200000), "yyyy-MM-dd'T'HH:mm"));
     setActiveHighlight({ type, data });
-
-    chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => {
+      chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
   };
 
-  // Wait for new telemetry to load, then horizontally center the highlighted point
   useEffect(() => {
     if (activeHighlight && scrollContainerRef.current && telemetry.length > 0) {
       const container = scrollContainerRef.current;
@@ -122,7 +104,7 @@ export default function Dashboard() {
         container.scrollTo({ left: maxScroll * ratio, behavior: 'smooth' });
       }
     }
-  }, 500);
+  }, 100);
 
   return () => clearTimeout(timeout);
     }
@@ -193,7 +175,6 @@ export default function Dashboard() {
     const fetchFilteredData = async () => {
       const { start, end } = getBounds();
 
-      // Paginated fetch to bypass Supabase's default 1,000 max_rows API limit
       let allTData: Telemetry[] = [];
       let from = 0;
       const step = 999;
@@ -211,7 +192,6 @@ export default function Dashboard() {
         if (tData && tData.length > 0) {
           allTData = [...allTData, ...tData];
           from += (step + 1);
-          // Stop if we reach the end of data or hit safety memory cap (100k points)
           if (tData.length <= step || allTData.length >= 100000) {
             keepFetching = false;
           }
@@ -475,7 +455,7 @@ export default function Dashboard() {
     </h2>
     {incidents.length > 0 && (
       <p className="text-xs font-bold text-slate-300 flex items-center gap-1.5 bg-blue-900/40 py-1.5 px-3 rounded-full border border-blue-500/30">
-      <MousePointerClick size={14} className="text-blue-400" /> Click an incident to auto-zoom on graph
+      <MousePointerClick size={14} className="text-blue-400" /> Click an incident to highlight & locate on graph
       </p>
     )}
     </div>
@@ -524,7 +504,7 @@ export default function Dashboard() {
     </h2>
     {activeHighlight && (
       <button
-      onClick={resetToDefault}
+      onClick={() => setActiveHighlight(null)}
       className="flex items-center gap-1.5 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-full transition-colors border border-slate-600 shadow-md"
       >
       <XCircle size={16} className="text-red-400" /> Clear Selection
@@ -613,7 +593,7 @@ export default function Dashboard() {
       <MousePointerClick size={14} className="text-slate-600 group-hover:text-red-400 transition-colors" />
       </div>
       <span className="text-3xl font-black text-red-400">{maxTemp}°C</span>
-      <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to zoom on graph</span>
+      <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to locate on graph</span>
       </div>
 
       <div
@@ -626,7 +606,7 @@ export default function Dashboard() {
         <MousePointerClick size={14} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
         </div>
         <span className="text-3xl font-black text-blue-400">{minTemp}°C</span>
-        <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to zoom on graph</span>
+        <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to locate on graph</span>
         </div>
         </div>
         </div>
