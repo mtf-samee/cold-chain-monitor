@@ -271,12 +271,12 @@ export default function Dashboard() {
 
     {/* Controls Panel */}
     <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md flex flex-wrap gap-4 items-end">
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1 w-full sm:w-auto">
     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Time Range</label>
     <select
     value={timeRange}
     onChange={(e) => { setTimeRange(e.target.value); setIsHistorical(false); }}
-    className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 transition-colors"
+    className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 transition-colors w-full sm:w-auto cursor-pointer"
     disabled={isHistorical}
     >
     <option value="1h">1 Hour</option>
@@ -293,12 +293,12 @@ export default function Dashboard() {
     </select>
     </div>
 
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1 w-full sm:w-auto">
     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mode</label>
     <select
     value={timeMode}
     onChange={(e) => setTimeMode(e.target.value as "rolling" | "absolute")}
-    className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 transition-colors"
+    className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 transition-colors w-full sm:w-auto cursor-pointer"
     disabled={isHistorical}
     >
     <option value="rolling">Rolling (From Now)</option>
@@ -306,35 +306,37 @@ export default function Dashboard() {
     </select>
     </div>
 
-    <div className="flex items-center gap-2 h-[38px] px-2 bg-slate-950 rounded-lg border border-slate-800">
+    <div className="flex items-center gap-2 h-[38px] px-3 bg-slate-950 rounded-lg border border-slate-800 w-full sm:w-auto hover:bg-slate-800/50 transition-colors">
     <input
     type="checkbox"
     id="historyToggle"
     checked={isHistorical}
     onChange={(e) => setIsHistorical(e.target.checked)}
-    className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-900"
+    className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-900 cursor-pointer"
     />
-    <label htmlFor="historyToggle" className="text-sm font-medium text-slate-300 select-none cursor-pointer">Custom History</label>
+    <label htmlFor="historyToggle" className="text-sm font-medium text-slate-300 select-none cursor-pointer w-full">Custom History</label>
     </div>
 
     {isHistorical && (
-      <div className="flex flex-wrap gap-2 items-end border-l border-slate-700 pl-4 ml-2">
-      <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Start Date</label>
+      <div className="flex flex-wrap gap-3 items-end border-l-2 border-blue-500/30 pl-4 w-full lg:w-auto bg-slate-950/30 p-2 rounded-lg">
+      <div className="flex flex-col gap-1 w-full sm:w-auto">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Start Date & Time</label>
       <input
       type="datetime-local"
       value={customStart}
+      onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
       onChange={(e) => setCustomStart(e.target.value)}
-      className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+      className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 cursor-pointer w-full sm:w-auto"
       />
       </div>
-      <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">End Date</label>
+      <div className="flex flex-col gap-1 w-full sm:w-auto">
+      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">End Date & Time</label>
       <input
       type="datetime-local"
       value={customEnd}
+      onClick={(e) => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
       onChange={(e) => setCustomEnd(e.target.value)}
-      className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+      className="bg-slate-950 border border-slate-700 text-sm rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500 cursor-pointer w-full sm:w-auto"
       />
       </div>
       </div>
