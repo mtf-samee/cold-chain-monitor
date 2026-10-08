@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ReferenceLine, ReferenceArea, ReferenceDot, ResponsiveContainer
+} from "recharts";
 import {
   format,
     subHours, subDays, subWeeks, subMonths, subYears,
@@ -11,7 +14,8 @@ import {
 import {
   Activity, Clock, AlertTriangle, Wifi, WifiOff,
   Battery, BatteryMedium, BatteryLow, BatteryFull,
-  ShieldCheck, ShieldAlert, ThermometerSnowflake
+  ShieldCheck, ShieldAlert, ThermometerSnowflake,
+  MousePointerClick, XCircle
 } from "lucide-react";
 
 const supabase = createClient(
@@ -44,6 +48,8 @@ const downsample = (data: any[], maxPoints: number) => {
 };
 
 export default function Dashboard() {
+  const chartRef = useRef<HTMLDivElement>(null);
+
   const [telemetry, setTelemetry] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [latest, setLatest] = useState<any>(null);
@@ -54,6 +60,17 @@ export default function Dashboard() {
   const [isHistorical, setIsHistorical] = useState(false);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+
+  const [activeHighlight, setActiveHighlight] = useState<{ type: 'breach' | 'peak' | 'deep', data: any } | null>(null);
+
+  // Clear highlight if filters change
+  useEffect(() => {
+    setActiveHighlight(null);
+  }, [timeRange, timeMode, isHistorical, customStart, customEnd]);
+
+  const scrollToGraph = () => {
+    chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   const getBounds = useCallback(() => {
     const now = new Date();
@@ -144,7 +161,7 @@ export default function Dashboard() {
       return () => { clearInterval(latestInterval); clearInterval(filterInterval); };
   }, [getBounds]);
 
-  const { healthScore, avgTemp, maxTemp, minTemp } = useMemo(() => {
+  const { healthScore, avgTemp, maxTemp, minTemp, maxPoint, minPoint } = useMemo(() => {
     let score = 100;
     incidents.forEach(inc => {
       score -= 10;
@@ -156,18 +173,22 @@ export default function Dashboard() {
     const finalScore = Math.max(0, Math.round(score));
 
     let sum = 0, max = -999, min = 999;
+    let maxPt = null, minPt = null;
+
     telemetry.forEach(d => {
       sum += d.temperature;
-      if (d.temperature > max) max = d.temperature;
-      if (d.temperature < min) min = d.temperature;
+      if (d.temperature > max) { max = d.temperature; maxPt = d; }
+      if (d.temperature < min) { min = d.temperature; minPt = d; }
     });
 
-      return {
-        healthScore: finalScore,
-        avgTemp: telemetry.length ? (sum / telemetry.length).toFixed(2) : "--",
-                                                             maxTemp: max !== -999 ? max.toFixed(2) : "--",
-                                                             minTemp: min !== 999 ? min.toFixed(2) : "--"
-      };
+    return {
+      healthScore: finalScore,
+      avgTemp: telemetry.length ? (sum / telemetry.length).toFixed(2) : "--",
+                                                                                 maxTemp: max !== -999 ? max.toFixed(2) : "--",
+                                                                                 minTemp: min !== 999 ? min.toFixed(2) : "--",
+                                                                                 maxPoint: maxPt,
+                                                                                 minPoint: minPt
+    };
   }, [telemetry, incidents]);
 
   const downsampledTelemetry = downsample(telemetry, 300);
@@ -187,22 +208,8 @@ export default function Dashboard() {
     return "bg-emerald-600";
   };
 
-  const getTempValueColor = (status: string, offline: boolean) => {
-    if (offline) return "text-slate-500";
-    if (status === "BREACH") return "text-red-500 animate-pulse";
-    if (status === "WARNING") return "text-yellow-500";
-    return "text-white";
-  };
-
-  const getTempIconColor = (status: string, offline: boolean) => {
-    if (offline) return "text-slate-500";
-    if (status === "BREACH") return "text-red-500";
-    if (status === "WARNING") return "text-yellow-500";
-    return "text-blue-400";
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans overflow-x-hidden">
     <div className="max-w-7xl mx-auto space-y-6">
 
     {/* Header */}
@@ -218,12 +225,12 @@ export default function Dashboard() {
 
     {/* Top KPI Cards */}
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-    <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative overflow-hidden">
+    <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md">
     <div className="flex items-center justify-between mb-2 text-slate-400">
     <span className="font-bold tracking-wider text-xs uppercase">Current Temp</span>
-    <Activity size={20} className={getTempIconColor(latest?.status, isOffline)} />
+    <Activity size={20} className={isOffline ? "text-slate-500" : latest?.status === "BREACH" ? "text-red-500" : latest?.status === "WARNING" ? "text-yellow-500" : "text-blue-400"} />
     </div>
-    <div className={`text-4xl sm:text-5xl font-black mt-2 transition-colors duration-300 ${getTempValueColor(latest?.status, isOffline)}`}>
+    <div className={`text-4xl sm:text-5xl font-black mt-2 transition-colors duration-300 ${isOffline ? "text-slate-500" : latest?.status === "BREACH" ? "text-red-500 animate-pulse" : latest?.status === "WARNING" ? "text-yellow-500" : "text-white"}`}>
     {latest ? `${latest.temperature}°C` : "--"}
     </div>
     </div>
@@ -345,9 +352,17 @@ export default function Dashboard() {
 
     {/* Breach Log */}
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md overflow-hidden">
-    <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-red-400 uppercase tracking-wider">
+    <div className="flex items-center justify-between mb-4">
+    <h2 className="text-lg font-bold flex items-center gap-2 text-red-400 uppercase tracking-wider">
     <AlertTriangle size={20} /> Period Breach Log
     </h2>
+    {incidents.length > 0 && (
+      <p className="text-xs text-slate-400 italic flex items-center gap-1 bg-slate-950 py-1 px-3 rounded-full border border-slate-800">
+      <MousePointerClick size={12} /> Click an incident to highlight it on the graph
+      </p>
+    )}
+    </div>
+
     <div className="overflow-x-auto">
     <table className="w-full text-left border-collapse whitespace-nowrap">
     <thead>
@@ -365,12 +380,17 @@ export default function Dashboard() {
       </tr>
     ) : (
       incidents.map((inc) => (
-        <tr key={inc.id} className="border-b border-slate-800 hover:bg-slate-800/50 transition-colors">
-        <td className="py-3 px-4">{format(new Date(String(inc.start_time)), "MMM d, HH:mm:ss")}</td>
-        <td className="py-3 px-4">{inc.end_time ? format(new Date(String(inc.end_time)), "MMM d, HH:mm:ss") : <span className="text-red-500 font-bold animate-pulse">ACTIVE</span>}</td>
-        <td className="py-3 px-4">{calculateDuration(inc.start_time, inc.end_time)}</td>
-        <td className="py-3 px-4 font-mono text-red-400 bg-red-950/20">{inc.peak_temperature}°C</td>
-        </tr>
+        <tr
+        key={inc.id}
+        onClick={() => { setActiveHighlight({ type: 'breach', data: inc }); scrollToGraph(); }}
+        className={`border-b border-slate-800 cursor-pointer transition-all duration-200
+          ${activeHighlight?.data?.id === inc.id ? "bg-red-900/30 border-l-2 border-l-red-500" : "hover:bg-slate-800 hover:scale-[1.01]"}`}
+          >
+          <td className="py-3 px-4">{format(new Date(String(inc.start_time)), "MMM d, HH:mm:ss")}</td>
+          <td className="py-3 px-4">{inc.end_time ? format(new Date(String(inc.end_time)), "MMM d, HH:mm:ss") : <span className="text-red-500 font-bold animate-pulse">ACTIVE</span>}</td>
+          <td className="py-3 px-4">{calculateDuration(inc.start_time, inc.end_time)}</td>
+          <td className="py-3 px-4 font-mono text-red-400">{inc.peak_temperature}°C</td>
+          </tr>
       ))
     )}
     </tbody>
@@ -379,11 +399,22 @@ export default function Dashboard() {
     </div>
 
     {/* Temperature Graph & Stats */}
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-    <div className="lg:col-span-3 bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md">
-    <h2 className="text-lg font-bold mb-6 flex items-center gap-2 uppercase tracking-wider">
+    <div ref={chartRef} className="grid grid-cols-1 lg:grid-cols-4 gap-6 scroll-mt-6">
+    <div className="lg:col-span-3 bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative">
+    <div className="flex items-center justify-between mb-6">
+    <h2 className="text-lg font-bold flex items-center gap-2 uppercase tracking-wider">
     <Activity size={20} className="text-blue-500" /> Temperature Trend
     </h2>
+    {activeHighlight && (
+      <button
+      onClick={() => setActiveHighlight(null)}
+      className="flex items-center gap-1 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-full transition-colors border border-slate-600"
+      >
+      <XCircle size={14} className="text-red-400" /> Clear Selection
+      </button>
+    )}
+    </div>
+
     <div className="w-full overflow-x-auto pb-4">
     <div className="h-[400px] min-w-[700px]">
     <ResponsiveContainer width="100%" height="100%">
@@ -411,6 +442,28 @@ export default function Dashboard() {
     />
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }} />
+
+    {/* Dynamic Interactive Highlights */}
+    {activeHighlight?.type === 'breach' && activeHighlight.data && (
+      <ReferenceArea
+      x1={new Date(activeHighlight.data.start_time).getTime()}
+      x2={activeHighlight.data.end_time ? new Date(activeHighlight.data.end_time).getTime() : new Date().getTime()}
+      fill="#ef4444" fillOpacity={0.25} stroke="#ef4444" strokeOpacity={0.5}
+      />
+    )}
+    {activeHighlight?.type === 'peak' && activeHighlight.data && (
+      <>
+      <ReferenceLine x={activeHighlight.data.timeMs} stroke="#ef4444" strokeDasharray="3 3" />
+      <ReferenceDot x={activeHighlight.data.timeMs} y={activeHighlight.data.temperature} r={8} fill="#ef4444" stroke="#fff" strokeWidth={2} />
+      </>
+    )}
+    {activeHighlight?.type === 'deep' && activeHighlight.data && (
+      <>
+      <ReferenceLine x={activeHighlight.data.timeMs} stroke="#3b82f6" strokeDasharray="3 3" />
+      <ReferenceDot x={activeHighlight.data.timeMs} y={activeHighlight.data.temperature} r={8} fill="#3b82f6" stroke="#fff" strokeWidth={2} />
+      </>
+    )}
+
     <Line type="monotone" dataKey="temperature" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6, fill: "#60a5fa", strokeWidth: 0 }} />
     </LineChart>
     </ResponsiveContainer>
@@ -419,26 +472,45 @@ export default function Dashboard() {
     </div>
 
     {/* Period Analytics Panel */}
-    <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md flex flex-col gap-6">
-    <h2 className="text-lg font-bold flex items-center gap-2 uppercase tracking-wider text-slate-300">
+    <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md flex flex-col gap-4">
+    <h2 className="text-lg font-bold flex items-center gap-2 uppercase tracking-wider text-slate-300 mb-2">
     <ThermometerSnowflake size={20} className="text-blue-400" /> Period Analytics
     </h2>
+
     <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col gap-1">
     <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Average Temp</span>
     <span className="text-3xl font-black text-white">{avgTemp}°C</span>
     </div>
-    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col gap-1">
-    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Peak Max</span>
-    <span className="text-3xl font-black text-red-400">{maxTemp}°C</span>
-    </div>
-    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col gap-1">
-    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Deepest Min</span>
-    <span className="text-3xl font-black text-blue-400">{minTemp}°C</span>
-    </div>
-    </div>
-    </div>
 
-    </div>
-    </div>
+    <div
+    onClick={() => { maxPoint && setActiveHighlight({ type: 'peak', data: maxPoint }); scrollToGraph(); }}
+    className={`bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col gap-1 cursor-pointer transition-all duration-200 group
+      ${activeHighlight?.type === 'peak' ? 'ring-2 ring-red-500 scale-[1.02]' : 'hover:bg-slate-800 hover:scale-[1.02]'}`}
+      >
+      <div className="flex justify-between items-center w-full">
+      <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Peak Max</span>
+      <MousePointerClick size={14} className="text-slate-600 group-hover:text-red-400 transition-colors" />
+      </div>
+      <span className="text-3xl font-black text-red-400">{maxTemp}°C</span>
+      <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to locate on graph</span>
+      </div>
+
+      <div
+      onClick={() => { minPoint && setActiveHighlight({ type: 'deep', data: minPoint }); scrollToGraph(); }}
+      className={`bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col gap-1 cursor-pointer transition-all duration-200 group
+        ${activeHighlight?.type === 'deep' ? 'ring-2 ring-blue-500 scale-[1.02]' : 'hover:bg-slate-800 hover:scale-[1.02]'}`}
+        >
+        <div className="flex justify-between items-center w-full">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Deepest Min</span>
+        <MousePointerClick size={14} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
+        </div>
+        <span className="text-3xl font-black text-blue-400">{minTemp}°C</span>
+        <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to locate on graph</span>
+        </div>
+        </div>
+        </div>
+
+        </div>
+        </div>
   );
 }
