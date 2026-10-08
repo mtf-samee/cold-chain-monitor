@@ -23,7 +23,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Strict TypeScript interfaces to pass Vercel build
+// Explicit TypeScript Interfaces to satisfy Vercel's strict build process
 interface Telemetry {
   id?: number;
   created_at: string;
@@ -107,13 +107,18 @@ export default function Dashboard() {
   ? new Date((activeHighlight.data as Incident).start_time).getTime()
   : (activeHighlight.data as Telemetry).timeMs;
 
-  if (targetTime >= minTime && targetTime <= maxTime) {
-    const ratio = (targetTime - minTime) / (maxTime - minTime);
-    const maxScroll = container.scrollWidth - container.clientWidth;
-    setTimeout(() => {
-      container.scrollTo({ left: maxScroll * ratio, behavior: 'smooth' });
-    }, 300);
-  }
+  // 500ms timeout ensures the graph has finished rendering the newly fetched data
+  const timeout = setTimeout(() => {
+    if (targetTime >= minTime && targetTime <= maxTime) {
+      const ratio = (targetTime - minTime) / (maxTime - minTime);
+      const maxScroll = container.scrollWidth - container.clientWidth;
+      if (maxScroll > 0) {
+        container.scrollTo({ left: maxScroll * ratio, behavior: 'smooth' });
+      }
+    }
+  }, 500);
+
+  return () => clearTimeout(timeout);
     }
   }, [telemetry, activeHighlight]);
 
@@ -215,7 +220,15 @@ export default function Dashboard() {
       return () => { clearInterval(latestInterval); clearInterval(filterInterval); };
   }, [getBounds]);
 
-  const { healthScore, avgTemp, maxTemp, minTemp, maxPoint, minPoint } = useMemo(() => {
+  // Explicit type declaration for useMemo prevents Vercel "never" inference crashes
+  const { healthScore, avgTemp, maxTemp, minTemp, maxPoint, minPoint } = useMemo<{
+    healthScore: number;
+    avgTemp: string;
+    maxTemp: string;
+    minTemp: string;
+    maxPoint: Telemetry | null;
+    minPoint: Telemetry | null;
+  }>(() => {
     let score = 100;
     incidents.forEach(inc => {
       score -= 10;
@@ -235,11 +248,11 @@ export default function Dashboard() {
 
     return {
       healthScore: Math.max(0, Math.round(score)),
-                                                                                 avgTemp: telemetry.length ? (sum / telemetry.length).toFixed(2) : "--",
-                                                                                 maxTemp: max !== -999 ? max.toFixed(2) : "--",
-                                                                                 minTemp: min !== 999 ? min.toFixed(2) : "--",
-                                                                                 maxPoint: maxPt,
-                                                                                 minPoint: minPt
+     avgTemp: telemetry.length ? (sum / telemetry.length).toFixed(2) : "--",
+     maxTemp: max !== -999 ? max.toFixed(2) : "--",
+     minTemp: min !== 999 ? min.toFixed(2) : "--",
+     maxPoint: maxPt,
+     minPoint: minPt
     };
   }, [telemetry, incidents]);
 
@@ -503,11 +516,9 @@ export default function Dashboard() {
     domain={['dataMin', 'dataMax']}
     scale="time"
     stroke="#64748b"
-    tickFormatter={(ms) => {
-      const val = Number(ms);
-      if (isNaN(val)) return "";
+    tickFormatter={(ms: number) => {
       const isLongPeriod = timeRange === "1w" || timeRange === "2w" || timeRange.includes("mo") || timeRange.includes("y") || (isHistorical && customStart && customEnd && new Date(customEnd).getTime() - new Date(customStart).getTime() > 172800000);
-      return format(new Date(val), isLongPeriod ? "MMM d" : "HH:mm");
+      return format(new Date(ms), isLongPeriod ? "MMM d" : "HH:mm");
     }}
     tickCount={8}
     />
@@ -520,7 +531,7 @@ export default function Dashboard() {
     />
     <Tooltip
     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)' }}
-    labelFormatter={(label) => format(new Date(Number(label)), "PP pp")}
+    labelFormatter={(label: number) => format(new Date(label), "PP pp")}
     />
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }} />
