@@ -23,7 +23,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Explicit TypeScript Interfaces to satisfy Vercel's strict build process
+// Explicit TypeScript Interfaces
 interface Telemetry {
   id?: number;
   created_at: string;
@@ -65,7 +65,6 @@ const getBatteryPercentage = (voltage: number) => {
 
 export default function Dashboard() {
   const chartRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [telemetry, setTelemetry] = useState<Telemetry[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -80,47 +79,32 @@ export default function Dashboard() {
 
   const [activeHighlight, setActiveHighlight] = useState<HighlightState | null>(null);
 
-  // Directly forces filter to zoom into the requested timestamp
+  // Auto-Zoom Logic: Forces Supabase to pull exactly ±2 hours around the clicked event
   const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: Incident | Telemetry) => {
+    let targetStart = 0;
+    let targetEnd = 0;
+
     if (type === 'breach') {
       const inc = data as Incident;
-      const targetStart = new Date(inc.start_time).getTime();
-      const targetEnd = inc.end_time ? new Date(inc.end_time).getTime() : targetStart;
-
-      // Auto-zoom graph to ±4 hours around the incident
-      setIsHistorical(true);
-      setCustomStart(format(new Date(targetStart - 14400000), "yyyy-MM-dd'T'HH:mm"));
-      setCustomEnd(format(new Date(targetEnd + 14400000), "yyyy-MM-dd'T'HH:mm"));
+      targetStart = new Date(inc.start_time).getTime();
+      targetEnd = inc.end_time ? new Date(inc.end_time).getTime() : targetStart;
+    } else {
+      const tel = data as Telemetry;
+      targetStart = tel.timeMs;
+      targetEnd = tel.timeMs;
     }
 
+    // Force exact custom date filter
+    setIsHistorical(true);
+    setCustomStart(format(new Date(targetStart - 7200000), "yyyy-MM-dd'T'HH:mm")); // -2 Hours
+    setCustomEnd(format(new Date(targetEnd + 7200000), "yyyy-MM-dd'T'HH:mm"));   // +2 Hours
     setActiveHighlight({ type, data });
-    chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Scroll to the graph wrapper smoothly
+    setTimeout(() => {
+      chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
-
-  // Wait for new telemetry to load, then horizontally center the highlighted point
-  useEffect(() => {
-    if (activeHighlight && scrollContainerRef.current && telemetry.length > 0) {
-      const container = scrollContainerRef.current;
-      const minTime = telemetry[0].timeMs;
-      const maxTime = telemetry[telemetry.length - 1].timeMs;
-      const targetTime = activeHighlight.type === 'breach'
-  ? new Date((activeHighlight.data as Incident).start_time).getTime()
-  : (activeHighlight.data as Telemetry).timeMs;
-
-  // 500ms timeout ensures the graph has finished rendering the newly fetched data
-  const timeout = setTimeout(() => {
-    if (targetTime >= minTime && targetTime <= maxTime) {
-      const ratio = (targetTime - minTime) / (maxTime - minTime);
-      const maxScroll = container.scrollWidth - container.clientWidth;
-      if (maxScroll > 0) {
-        container.scrollTo({ left: maxScroll * ratio, behavior: 'smooth' });
-      }
-    }
-  }, 500);
-
-  return () => clearTimeout(timeout);
-    }
-  }, [telemetry, activeHighlight]);
 
   const resetToDefault = () => {
     setTimeRange("1mo");
@@ -220,7 +204,6 @@ export default function Dashboard() {
       return () => { clearInterval(latestInterval); clearInterval(filterInterval); };
   }, [getBounds]);
 
-  // Explicit type declaration for useMemo prevents Vercel "never" inference crashes
   const { healthScore, avgTemp, maxTemp, minTemp, maxPoint, minPoint } = useMemo<{
     healthScore: number;
     avgTemp: string;
@@ -448,7 +431,7 @@ export default function Dashboard() {
     </h2>
     {incidents.length > 0 && (
       <p className="text-xs font-bold text-slate-300 flex items-center gap-1.5 bg-blue-900/40 py-1.5 px-3 rounded-full border border-blue-500/30">
-      <MousePointerClick size={14} className="text-blue-400" /> Click an incident to highlight & locate on graph
+      <MousePointerClick size={14} className="text-blue-400" /> Click an incident to auto-zoom on graph
       </p>
     )}
     </div>
@@ -497,7 +480,7 @@ export default function Dashboard() {
     </h2>
     {activeHighlight && (
       <button
-      onClick={() => setActiveHighlight(null)}
+      onClick={resetToDefault}
       className="flex items-center gap-1.5 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-full transition-colors border border-slate-600 shadow-md"
       >
       <XCircle size={16} className="text-red-400" /> Clear Selection
@@ -505,8 +488,8 @@ export default function Dashboard() {
     )}
     </div>
 
-    <div ref={scrollContainerRef} className="w-full overflow-x-auto pb-4 scroll-smooth">
-    <div className="h-[400px] min-w-[800px]">
+    <div className="w-full overflow-x-auto pb-4 scroll-smooth">
+    <div className="h-[400px] min-w-[700px]">
     <ResponsiveContainer width="100%" height="100%">
     <LineChart data={downsampledTelemetry} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
@@ -516,9 +499,11 @@ export default function Dashboard() {
     domain={['dataMin', 'dataMax']}
     scale="time"
     stroke="#64748b"
-    tickFormatter={(ms: number) => {
+    tickFormatter={(ms: any) => {
+      const val = Number(ms);
+      if (isNaN(val)) return "";
       const isLongPeriod = timeRange === "1w" || timeRange === "2w" || timeRange.includes("mo") || timeRange.includes("y") || (isHistorical && customStart && customEnd && new Date(customEnd).getTime() - new Date(customStart).getTime() > 172800000);
-      return format(new Date(ms), isLongPeriod ? "MMM d" : "HH:mm");
+      return format(new Date(val), isLongPeriod ? "MMM d" : "HH:mm");
     }}
     tickCount={8}
     />
@@ -531,7 +516,10 @@ export default function Dashboard() {
     />
     <Tooltip
     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)' }}
-    labelFormatter={(label: number) => format(new Date(label), "PP pp")}
+    labelFormatter={(label: any) => {
+      const val = Number(label);
+      return isNaN(val) ? "" : format(new Date(val), "PP pp");
+    }}
     />
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }} />
@@ -584,7 +572,7 @@ export default function Dashboard() {
       <MousePointerClick size={14} className="text-slate-600 group-hover:text-red-400 transition-colors" />
       </div>
       <span className="text-3xl font-black text-red-400">{maxTemp}°C</span>
-      <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to locate on graph</span>
+      <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to zoom on graph</span>
       </div>
 
       <div
@@ -597,7 +585,7 @@ export default function Dashboard() {
         <MousePointerClick size={14} className="text-slate-600 group-hover:text-blue-400 transition-colors" />
         </div>
         <span className="text-3xl font-black text-blue-400">{minTemp}°C</span>
-        <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to locate on graph</span>
+        <span className="text-[10px] text-slate-500 hidden group-hover:block transition-all">Click to zoom on graph</span>
         </div>
         </div>
         </div>
