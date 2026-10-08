@@ -15,7 +15,7 @@ import {
   Activity, Clock, AlertTriangle, Wifi, WifiOff,
   Battery, BatteryMedium, BatteryLow, BatteryFull,
   ShieldCheck, ShieldAlert, ThermometerSnowflake,
-  MousePointerClick, XCircle
+  MousePointerClick, XCircle, RotateCcw
 } from "lucide-react";
 
 const supabase = createClient(
@@ -49,6 +49,7 @@ const downsample = (data: any[], maxPoints: number) => {
 
 export default function Dashboard() {
   const chartRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [telemetry, setTelemetry] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
@@ -63,13 +64,43 @@ export default function Dashboard() {
 
   const [activeHighlight, setActiveHighlight] = useState<{ type: 'breach' | 'peak' | 'deep', data: any } | null>(null);
 
-  // Clear highlight if filters change
   useEffect(() => {
     setActiveHighlight(null);
   }, [timeRange, timeMode, isHistorical, customStart, customEnd]);
 
-  const scrollToGraph = () => {
+  const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: any) => {
+    setActiveHighlight({ type, data });
+
+    // 1. Vertical scroll to the chart container
     chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // 2. Calculate and execute Horizontal scroll inside the graph
+    setTimeout(() => {
+      if (scrollContainerRef.current && telemetry.length > 0) {
+        const container = scrollContainerRef.current;
+        const minTime = telemetry[0].timeMs;
+        const maxTime = telemetry[telemetry.length - 1].timeMs;
+        const targetTime = type === 'breach' ? new Date(data.start_time).getTime() : data.timeMs;
+
+        const ratio = (targetTime - minTime) / (maxTime - minTime);
+        if (ratio >= 0 && ratio <= 1) {
+          const maxScroll = container.scrollWidth - container.clientWidth;
+          container.scrollTo({
+            left: maxScroll * ratio,
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 400); // Wait 400ms for vertical scroll to settle
+  };
+
+  const resetToDefault = () => {
+    setTimeRange("1mo");
+    setTimeMode("rolling");
+    setIsHistorical(false);
+    setCustomStart("");
+    setCustomEnd("");
+    setActiveHighlight(null);
   };
 
   const getBounds = useCallback(() => {
@@ -87,7 +118,7 @@ export default function Dashboard() {
         case "3h": start = subHours(now, 3); break;
         case "6h": start = subHours(now, 6); break;
         case "12h": start = subHours(now, 12); break;
-        case "1d": start = subDays(now, 1); break;
+        case "1d": start = subHours(now, 24); break;
         case "1w": start = subWeeks(now, 1); break;
         case "2w": start = subWeeks(now, 2); break;
         case "1mo": start = subMonths(now, 1); break;
@@ -202,18 +233,32 @@ export default function Dashboard() {
   };
 
   const getStatusColor = (status: string, offline: boolean) => {
-    if (offline) return "bg-slate-600";
-    if (status === "BREACH") return "bg-red-600 animate-pulse";
+    if (offline) return "bg-slate-700";
+    if (status === "BREACH") return "bg-red-700 animate-pulse";
     if (status === "WARNING") return "bg-yellow-600";
-    return "bg-emerald-600";
+    return "bg-emerald-700";
+  };
+
+  const getTempValueColor = (status: string, offline: boolean) => {
+    if (offline) return "text-slate-500";
+    if (status === "BREACH") return "text-red-500 animate-pulse";
+    if (status === "WARNING") return "text-yellow-500";
+    return "text-white";
+  };
+
+  const getTempIconColor = (status: string, offline: boolean) => {
+    if (offline) return "text-slate-500";
+    if (status === "BREACH") return "text-red-500";
+    if (status === "WARNING") return "text-yellow-500";
+    return "text-blue-400";
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans">
     <div className="max-w-7xl mx-auto space-y-6">
 
-    {/* Header */}
-    <div className={`p-5 rounded-xl flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500 shadow-lg border border-white/10`}>
+    {/* Persistent Header */}
+    <div className={`sticky top-0 sm:top-2 z-50 p-5 rounded-xl flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500 shadow-2xl border border-white/20 -mx-2 sm:mx-0`}>
     <div>
     <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-md">Freeze Pharm</h1>
     <p className="text-white/90 font-semibold text-sm sm:text-base mt-1">
@@ -224,13 +269,13 @@ export default function Dashboard() {
     </div>
 
     {/* Top KPI Cards */}
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-    <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-4">
+    <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative overflow-hidden">
     <div className="flex items-center justify-between mb-2 text-slate-400">
     <span className="font-bold tracking-wider text-xs uppercase">Current Temp</span>
-    <Activity size={20} className={isOffline ? "text-slate-500" : latest?.status === "BREACH" ? "text-red-500" : latest?.status === "WARNING" ? "text-yellow-500" : "text-blue-400"} />
+    <Activity size={20} className={getTempIconColor(latest?.status, isOffline)} />
     </div>
-    <div className={`text-4xl sm:text-5xl font-black mt-2 transition-colors duration-300 ${isOffline ? "text-slate-500" : latest?.status === "BREACH" ? "text-red-500 animate-pulse" : latest?.status === "WARNING" ? "text-yellow-500" : "text-white"}`}>
+    <div className={`text-4xl sm:text-5xl font-black mt-2 transition-colors duration-300 ${getTempValueColor(latest?.status, isOffline)}`}>
     {latest ? `${latest.temperature}°C` : "--"}
     </div>
     </div>
@@ -290,7 +335,7 @@ export default function Dashboard() {
     <option value="3h">3 Hours</option>
     <option value="6h">6 Hours</option>
     <option value="12h">12 Hours</option>
-    <option value="1d">1 Day</option>
+    <option value="1d">24 Hours</option>
     <option value="1w">1 Week</option>
     <option value="2w">1 Fortnight (14d)</option>
     <option value="1mo">1 Month</option>
@@ -348,17 +393,26 @@ export default function Dashboard() {
       </div>
       </div>
     )}
+
+    <div className="flex-grow"></div>
+
+    <button
+    onClick={resetToDefault}
+    className="flex items-center justify-center gap-2 h-[38px] px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-lg transition-colors w-full sm:w-auto shadow-md"
+    >
+    <RotateCcw size={16} /> Reset Default
+    </button>
     </div>
 
     {/* Breach Log */}
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md overflow-hidden">
-    <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
     <h2 className="text-lg font-bold flex items-center gap-2 text-red-400 uppercase tracking-wider">
     <AlertTriangle size={20} /> Period Breach Log
     </h2>
     {incidents.length > 0 && (
-      <p className="text-xs text-slate-400 italic flex items-center gap-1 bg-slate-950 py-1 px-3 rounded-full border border-slate-800">
-      <MousePointerClick size={12} /> Click an incident to highlight it on the graph
+      <p className="text-xs font-bold text-slate-300 flex items-center gap-1.5 bg-blue-900/40 py-1.5 px-3 rounded-full border border-blue-500/30">
+      <MousePointerClick size={14} className="text-blue-400" /> Click an incident to highlight & locate on graph
       </p>
     )}
     </div>
@@ -382,9 +436,9 @@ export default function Dashboard() {
       incidents.map((inc) => (
         <tr
         key={inc.id}
-        onClick={() => { setActiveHighlight({ type: 'breach', data: inc }); scrollToGraph(); }}
+        onClick={() => handleHighlight('breach', inc)}
         className={`border-b border-slate-800 cursor-pointer transition-all duration-200
-          ${activeHighlight?.data?.id === inc.id ? "bg-red-900/30 border-l-2 border-l-red-500" : "hover:bg-slate-800 hover:scale-[1.01]"}`}
+          ${activeHighlight?.data?.id === inc.id ? "bg-red-900/30 border-l-4 border-l-red-500 shadow-inner" : "hover:bg-slate-800 hover:scale-[1.01] border-l-4 border-l-transparent"}`}
           >
           <td className="py-3 px-4">{format(new Date(String(inc.start_time)), "MMM d, HH:mm:ss")}</td>
           <td className="py-3 px-4">{inc.end_time ? format(new Date(String(inc.end_time)), "MMM d, HH:mm:ss") : <span className="text-red-500 font-bold animate-pulse">ACTIVE</span>}</td>
@@ -399,7 +453,7 @@ export default function Dashboard() {
     </div>
 
     {/* Temperature Graph & Stats */}
-    <div ref={chartRef} className="grid grid-cols-1 lg:grid-cols-4 gap-6 scroll-mt-6">
+    <div ref={chartRef} className="grid grid-cols-1 lg:grid-cols-4 gap-6 scroll-mt-32">
     <div className="lg:col-span-3 bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative">
     <div className="flex items-center justify-between mb-6">
     <h2 className="text-lg font-bold flex items-center gap-2 uppercase tracking-wider">
@@ -408,15 +462,15 @@ export default function Dashboard() {
     {activeHighlight && (
       <button
       onClick={() => setActiveHighlight(null)}
-      className="flex items-center gap-1 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-full transition-colors border border-slate-600"
+      className="flex items-center gap-1.5 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-full transition-colors border border-slate-600 shadow-md"
       >
-      <XCircle size={14} className="text-red-400" /> Clear Selection
+      <XCircle size={16} className="text-red-400" /> Clear Selection
       </button>
     )}
     </div>
 
-    <div className="w-full overflow-x-auto pb-4">
-    <div className="h-[400px] min-w-[700px]">
+    <div ref={scrollContainerRef} className="w-full overflow-x-auto pb-4 scroll-smooth">
+    <div className="h-[400px] min-w-[800px]">
     <ResponsiveContainer width="100%" height="100%">
     <LineChart data={downsampledTelemetry} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
@@ -426,7 +480,10 @@ export default function Dashboard() {
     domain={['dataMin', 'dataMax']}
     scale="time"
     stroke="#64748b"
-    tickFormatter={(ms: any) => format(new Date(Number(ms)), timeRange.includes("d") || timeRange.includes("mo") || timeRange.includes("w") || timeRange.includes("y") || isHistorical ? "MMM d" : "HH:mm")}
+    tickFormatter={(ms: any) => {
+      const isLongPeriod = timeRange === "1w" || timeRange === "2w" || timeRange.includes("mo") || timeRange.includes("y") || (isHistorical && customStart && customEnd && new Date(customEnd).getTime() - new Date(customStart).getTime() > 172800000);
+      return format(new Date(Number(ms)), isLongPeriod ? "MMM d" : "HH:mm");
+    }}
     tickCount={8}
     />
     <YAxis
@@ -483,7 +540,7 @@ export default function Dashboard() {
     </div>
 
     <div
-    onClick={() => { maxPoint && setActiveHighlight({ type: 'peak', data: maxPoint }); scrollToGraph(); }}
+    onClick={() => { maxPoint && handleHighlight('peak', maxPoint); }}
     className={`bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col gap-1 cursor-pointer transition-all duration-200 group
       ${activeHighlight?.type === 'peak' ? 'ring-2 ring-red-500 scale-[1.02]' : 'hover:bg-slate-800 hover:scale-[1.02]'}`}
       >
@@ -496,7 +553,7 @@ export default function Dashboard() {
       </div>
 
       <div
-      onClick={() => { minPoint && setActiveHighlight({ type: 'deep', data: minPoint }); scrollToGraph(); }}
+      onClick={() => { minPoint && handleHighlight('deep', minPoint); }}
       className={`bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col gap-1 cursor-pointer transition-all duration-200 group
         ${activeHighlight?.type === 'deep' ? 'ring-2 ring-blue-500 scale-[1.02]' : 'hover:bg-slate-800 hover:scale-[1.02]'}`}
         >
