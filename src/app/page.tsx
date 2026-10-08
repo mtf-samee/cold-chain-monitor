@@ -23,6 +23,23 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Explicit TypeScript Interfaces to fix Vercel build failures
+interface Telemetry {
+  id?: number;
+  created_at: string;
+  temperature: number;
+  battery_voltage: number;
+  status: string;
+  timeMs: number;
+}
+
+interface Incident {
+  id: number;
+  start_time: string;
+  end_time: string | null;
+  peak_temperature: number;
+}
+
 const calculateDuration = (start: string, end: string | null) => {
   if (!end) return "--";
   const totalSeconds = Math.floor((new Date(end).getTime() - new Date(start).getTime()) / 1000);
@@ -45,9 +62,9 @@ export default function Dashboard() {
   const chartRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const [telemetry, setTelemetry] = useState<any[]>([]);
-  const [incidents, setIncidents] = useState<any[]>([]);
-  const [latest, setLatest] = useState<any>(null);
+  const [telemetry, setTelemetry] = useState<Telemetry[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [latest, setLatest] = useState<Telemetry | null>(null);
   const [isOffline, setIsOffline] = useState(true);
 
   const [timeRange, setTimeRange] = useState("1mo");
@@ -58,33 +75,46 @@ export default function Dashboard() {
 
   const [activeHighlight, setActiveHighlight] = useState<{ type: 'breach' | 'peak' | 'deep', data: any } | null>(null);
 
-  useEffect(() => {
-    setActiveHighlight(null);
-  }, [timeRange, timeMode, isHistorical, customStart, customEnd]);
-
+  // Cross-reference navigation logic
   const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: any) => {
-    setActiveHighlight({ type, data });
-
     chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-    setTimeout(() => {
-      if (scrollContainerRef.current && telemetry.length > 0) {
-        const container = scrollContainerRef.current;
-        const minTime = telemetry[0].timeMs;
-        const maxTime = telemetry[telemetry.length - 1].timeMs;
-        const targetTime = type === 'breach' ? new Date(data.start_time).getTime() : data.timeMs;
+    const targetStart = type === 'breach' ? new Date(data.start_time).getTime() : data.timeMs;
+    const targetEnd = type === 'breach' && data.end_time ? new Date(data.end_time).getTime() : targetStart;
 
-        const ratio = (targetTime - minTime) / (maxTime - minTime);
-        if (ratio >= 0 && ratio <= 1) {
-          const maxScroll = container.scrollWidth - container.clientWidth;
-          container.scrollTo({
-            left: maxScroll * ratio,
-            behavior: 'smooth'
-          });
-        }
-      }
-    }, 400);
+    const currentStart = telemetry.length > 0 ? telemetry[0].timeMs : new Date().getTime();
+    const currentEnd = telemetry.length > 0 ? telemetry[telemetry.length - 1].timeMs : new Date().getTime();
+
+    // If target is outside visible graph, auto-adjust filters to wrap the incident (±2 hours)
+    if (targetStart < currentStart || targetEnd > currentEnd) {
+      setIsHistorical(true);
+      setCustomStart(format(new Date(targetStart - 7200000), "yyyy-MM-dd'T'HH:mm"));
+      setCustomEnd(format(new Date(targetEnd + 7200000), "yyyy-MM-dd'T'HH:mm"));
+    }
+
+    setActiveHighlight({ type, data });
   };
+
+  // Auto-scroll inside graph when telemetry updates or highlight changes
+  useEffect(() => {
+    if (activeHighlight && scrollContainerRef.current && telemetry.length > 0) {
+      const container = scrollContainerRef.current;
+      const minTime = telemetry[0].timeMs;
+      const maxTime = telemetry[telemetry.length - 1].timeMs;
+      const targetTime = activeHighlight.type === 'breach'
+  ? new Date(activeHighlight.data.start_time).getTime()
+  : activeHighlight.data.timeMs;
+
+  if (targetTime >= minTime && targetTime <= maxTime) {
+    const ratio = (targetTime - minTime) / (maxTime - minTime);
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    // Small delay ensures render completion before smooth scrolling
+    setTimeout(() => {
+      container.scrollTo({ left: maxScroll * ratio, behavior: 'smooth' });
+    }, 100);
+  }
+    }
+  }, [telemetry, activeHighlight]);
 
   const resetToDefault = () => {
     setTimeRange("1mo");
@@ -142,8 +172,9 @@ export default function Dashboard() {
     const fetchLatest = async () => {
       const { data } = await supabase.from("telemetry").select("*").order("created_at", { ascending: false }).limit(1);
       if (data && data.length > 0) {
-        setLatest(data[0]);
-        const lastPing = new Date(String(data[0].created_at)).getTime();
+        const latestData = { ...data[0], timeMs: new Date(String(data[0].created_at)).getTime() };
+        setLatest(latestData);
+        const lastPing = latestData.timeMs;
         setIsOffline(new Date().getTime() - lastPing > 210000);
       }
     };
@@ -151,7 +182,6 @@ export default function Dashboard() {
     const fetchFilteredData = async () => {
       const { start, end } = getBounds();
 
-      // Changed to order DESCENDING first so we grab the newest data if the limit is reached, then expanded limit
       const { data: tData } = await supabase
       .from("telemetry")
       .select("*")
@@ -168,7 +198,6 @@ export default function Dashboard() {
       .order("start_time", { ascending: false });
 
       if (tData) {
-        // Reverse back to chronological order for the chart
         const formatted = [...tData].reverse().map(d => ({
           ...d,
           timeMs: new Date(String(d.created_at)).getTime()
@@ -198,7 +227,7 @@ export default function Dashboard() {
     const finalScore = Math.max(0, Math.round(score));
 
     let sum = 0, max = -999, min = 999;
-    let maxPt = null, minPt = null;
+    let maxPt: Telemetry | null = null, minPt: Telemetry | null = null;
 
     telemetry.forEach(d => {
       sum += d.temperature;
@@ -216,11 +245,10 @@ export default function Dashboard() {
     };
   }, [telemetry, incidents]);
 
-  // Smart Downsampling: Compresses flatlines but perfectly preserves breaches and peaks
   const downsampledTelemetry = useMemo(() => {
     if (telemetry.length <= 300) return telemetry;
     const step = Math.ceil(telemetry.length / 300);
-    const resultMap = new Map();
+    const resultMap = new Map<number, Telemetry>();
 
     telemetry.forEach((d, i) => {
       if (i % step === 0 || d.status === 'BREACH' || d.status === 'WARNING') {
@@ -243,21 +271,21 @@ export default function Dashboard() {
     return <BatteryLow className="text-red-500 animate-pulse" size={24} />;
   };
 
-  const getStatusColor = (status: string, offline: boolean) => {
+  const getStatusColor = (status: string | undefined, offline: boolean) => {
     if (offline) return "bg-slate-700";
     if (status === "BREACH") return "bg-red-700 animate-pulse";
     if (status === "WARNING") return "bg-yellow-600";
     return "bg-emerald-700";
   };
 
-  const getTempValueColor = (status: string, offline: boolean) => {
+  const getTempValueColor = (status: string | undefined, offline: boolean) => {
     if (offline) return "text-slate-500";
     if (status === "BREACH") return "text-red-500 animate-pulse";
     if (status === "WARNING") return "text-yellow-500";
     return "text-white";
   };
 
-  const getTempIconColor = (status: string, offline: boolean) => {
+  const getTempIconColor = (status: string | undefined, offline: boolean) => {
     if (offline) return "text-slate-500";
     if (status === "BREACH") return "text-red-500";
     if (status === "WARNING") return "text-yellow-500";
@@ -491,7 +519,7 @@ export default function Dashboard() {
     domain={['dataMin', 'dataMax']}
     scale="time"
     stroke="#64748b"
-    tickFormatter={(ms: any) => {
+    tickFormatter={(ms: string | number) => {
       const isLongPeriod = timeRange === "1w" || timeRange === "2w" || timeRange.includes("mo") || timeRange.includes("y") || (isHistorical && customStart && customEnd && new Date(customEnd).getTime() - new Date(customStart).getTime() > 172800000);
       return format(new Date(Number(ms)), isLongPeriod ? "MMM d" : "HH:mm");
     }}
@@ -506,7 +534,7 @@ export default function Dashboard() {
     />
     <Tooltip
     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)' }}
-    labelFormatter={(label: any) => format(new Date(Number(label)), "PP pp")}
+    labelFormatter={(label: string | number) => format(new Date(Number(label)), "PP pp")}
     />
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }} />
