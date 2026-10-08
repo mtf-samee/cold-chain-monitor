@@ -23,7 +23,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Explicit TypeScript Interfaces
 interface Telemetry {
   id?: number;
   created_at: string;
@@ -65,6 +64,7 @@ const getBatteryPercentage = (voltage: number) => {
 
 export default function Dashboard() {
   const chartRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [telemetry, setTelemetry] = useState<Telemetry[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -79,7 +79,7 @@ export default function Dashboard() {
 
   const [activeHighlight, setActiveHighlight] = useState<HighlightState | null>(null);
 
-  // Auto-Zoom Logic: Forces Supabase to pull exactly ±2 hours around the clicked event
+  // Auto-Zoom Logic
   const handleHighlight = (type: 'breach' | 'peak' | 'deep', data: Incident | Telemetry) => {
     let targetStart = 0;
     let targetEnd = 0;
@@ -94,17 +94,39 @@ export default function Dashboard() {
       targetEnd = tel.timeMs;
     }
 
-    // Force exact custom date filter
+    // Force exact custom date filter (±2 hours)
     setIsHistorical(true);
-    setCustomStart(format(new Date(targetStart - 7200000), "yyyy-MM-dd'T'HH:mm")); // -2 Hours
-    setCustomEnd(format(new Date(targetEnd + 7200000), "yyyy-MM-dd'T'HH:mm"));   // +2 Hours
+    setCustomStart(format(new Date(targetStart - 7200000), "yyyy-MM-dd'T'HH:mm"));
+    setCustomEnd(format(new Date(targetEnd + 7200000), "yyyy-MM-dd'T'HH:mm"));
     setActiveHighlight({ type, data });
 
-    // Scroll to the graph wrapper smoothly
-    setTimeout(() => {
-      chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // Wait for new telemetry to load, then horizontally center the highlighted point
+  useEffect(() => {
+    if (activeHighlight && scrollContainerRef.current && telemetry.length > 0) {
+      const container = scrollContainerRef.current;
+      const minTime = telemetry[0].timeMs;
+      const maxTime = telemetry[telemetry.length - 1].timeMs;
+
+      const targetTime = activeHighlight.type === 'breach'
+  ? new Date((activeHighlight.data as Incident).start_time).getTime()
+  : (activeHighlight.data as Telemetry).timeMs;
+
+  const timeout = setTimeout(() => {
+    if (targetTime >= minTime && targetTime <= maxTime) {
+      const ratio = (targetTime - minTime) / (maxTime - minTime);
+      const maxScroll = container.scrollWidth - container.clientWidth;
+      if (maxScroll > 0) {
+        container.scrollTo({ left: maxScroll * ratio, behavior: 'smooth' });
+      }
+    }
+  }, 500);
+
+  return () => clearTimeout(timeout);
+    }
+  }, [telemetry, activeHighlight]);
 
   const resetToDefault = () => {
     setTimeRange("1mo");
@@ -171,13 +193,32 @@ export default function Dashboard() {
     const fetchFilteredData = async () => {
       const { start, end } = getBounds();
 
-      const { data: tData } = await supabase
-      .from("telemetry")
-      .select("*")
-      .gte("created_at", start.toISOString())
-      .lte("created_at", end.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(25000);
+      // Paginated fetch to bypass Supabase's default 1,000 max_rows API limit
+      let allTData: Telemetry[] = [];
+      let from = 0;
+      const step = 999;
+      let keepFetching = true;
+
+      while (keepFetching) {
+        const { data: tData } = await supabase
+        .from("telemetry")
+        .select("*")
+        .gte("created_at", start.toISOString())
+        .lte("created_at", end.toISOString())
+        .order("created_at", { ascending: false })
+        .range(from, from + step);
+
+        if (tData && tData.length > 0) {
+          allTData = [...allTData, ...tData];
+          from += (step + 1);
+          // Stop if we reach the end of data or hit safety memory cap (100k points)
+          if (tData.length <= step || allTData.length >= 100000) {
+            keepFetching = false;
+          }
+        } else {
+          keepFetching = false;
+        }
+      }
 
       const { data: iData } = await supabase
       .from("incidents")
@@ -186,13 +227,16 @@ export default function Dashboard() {
       .lte("start_time", end.toISOString())
       .order("start_time", { ascending: false });
 
-      if (tData) {
-        const formatted = [...tData].reverse().map(d => ({
+      if (allTData.length > 0) {
+        const formatted = allTData.reverse().map(d => ({
           ...d,
           timeMs: new Date(String(d.created_at)).getTime()
         }));
         setTelemetry(formatted);
+      } else {
+        setTelemetry([]);
       }
+
       if (iData) setIncidents(iData);
     };
 
@@ -488,8 +532,8 @@ export default function Dashboard() {
     )}
     </div>
 
-    <div className="w-full overflow-x-auto pb-4 scroll-smooth">
-    <div className="h-[400px] min-w-[700px]">
+    <div ref={scrollContainerRef} className="w-full overflow-x-auto pb-4 scroll-smooth">
+    <div className="h-[400px] min-w-[800px]">
     <ResponsiveContainer width="100%" height="100%">
     <LineChart data={downsampledTelemetry} margin={{ top: 10, right: 30, bottom: 5, left: -10 }}>
     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
@@ -499,7 +543,7 @@ export default function Dashboard() {
     domain={['dataMin', 'dataMax']}
     scale="time"
     stroke="#64748b"
-    tickFormatter={(ms: any) => {
+    tickFormatter={(ms) => {
       const val = Number(ms);
       if (isNaN(val)) return "";
       const isLongPeriod = timeRange === "1w" || timeRange === "2w" || timeRange.includes("mo") || timeRange.includes("y") || (isHistorical && customStart && customEnd && new Date(customEnd).getTime() - new Date(customStart).getTime() > 172800000);
@@ -516,10 +560,7 @@ export default function Dashboard() {
     />
     <Tooltip
     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#f8fafc', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)' }}
-    labelFormatter={(label: any) => {
-      const val = Number(label);
-      return isNaN(val) ? "" : format(new Date(val), "PP pp");
-    }}
+    labelFormatter={(label) => format(new Date(Number(label)), "PP pp")}
     />
     <ReferenceLine y={8.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Upper Bound (8°C)", fill: "#ef4444", position: "insideTopLeft", offset: 10 }} />
     <ReferenceLine y={2.0} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "Lower Bound (2°C)", fill: "#ef4444", position: "insideBottomRight", offset: 10 }} />
