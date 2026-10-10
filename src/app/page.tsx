@@ -13,7 +13,6 @@ import {
 } from "date-fns";
 import {
   Activity, Clock, AlertTriangle, Wifi, WifiOff,
-  Battery, BatteryMedium, BatteryLow, BatteryFull,
   ShieldCheck, ShieldAlert, ThermometerSnowflake,
   MousePointerClick, XCircle, RotateCcw
 } from "lucide-react";
@@ -27,7 +26,6 @@ interface Telemetry {
   id?: number;
   created_at: string;
   temperature: number;
-  battery_voltage: number;
   status: string;
   timeMs: number;
 }
@@ -55,11 +53,6 @@ const calculateDuration = (start: string, end: string | null) => {
   if (m > 0) parts.push(`${m} min`);
   if (s > 0 || parts.length === 0) parts.push(`${s} sec`);
   return parts.join(' ');
-};
-
-const getBatteryPercentage = (voltage: number) => {
-  if (!voltage) return 0;
-  return Math.max(0, Math.min(100, Math.round(((voltage - 3.3) / 0.9) * 100)));
 };
 
 export default function Dashboard() {
@@ -280,15 +273,6 @@ export default function Dashboard() {
     return Array.from(resultMap.values()).sort((a, b) => a.timeMs - b.timeMs);
   }, [telemetry, maxPoint, minPoint]);
 
-  const batteryPct = latest ? getBatteryPercentage(latest.battery_voltage) : 0;
-
-  const renderBatteryIcon = () => {
-    if (isOffline || !latest) return <Battery className="text-slate-500" size={24} />;
-    if (batteryPct >= 75) return <BatteryFull className="text-green-500" size={24} />;
-    if (batteryPct >= 40) return <BatteryMedium className="text-yellow-500" size={24} />;
-    return <BatteryLow className="text-red-500 animate-pulse" size={24} />;
-  };
-
   const getStatusColor = (status: string | undefined, offline: boolean) => {
     if (offline) return "bg-slate-700";
     if (status === "BREACH") return "bg-red-700 animate-pulse";
@@ -311,8 +295,8 @@ export default function Dashboard() {
     {isOffline ? <WifiOff size={32} className="text-white shrink-0 ml-4 opacity-80" /> : <Wifi size={32} className="text-white shrink-0 ml-4" />}
     </div>
 
-    {/* Top KPI Cards */}
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mt-4">
+    {/* Top KPI Cards (Adjusted to 3 columns) */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mt-4">
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative overflow-hidden">
     <div className="flex items-center justify-between mb-2 text-slate-400">
     <span className="font-bold tracking-wider text-xs uppercase">Current Temp</span>
@@ -320,21 +304,6 @@ export default function Dashboard() {
     </div>
     <div className={`text-4xl sm:text-5xl font-black mt-2 transition-colors duration-300 ${isOffline ? "text-slate-500" : latest?.status === "BREACH" ? "text-red-500 animate-pulse" : latest?.status === "WARNING" ? "text-yellow-500" : "text-white"}`}>
     {latest ? `${latest.temperature}°C` : "--"}
-    </div>
-    </div>
-
-    <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md">
-    <div className="flex items-center justify-between mb-2 text-slate-400">
-    <span className="font-bold tracking-wider text-xs uppercase">Battery Level</span>
-    {renderBatteryIcon()}
-    </div>
-    <div className="flex items-baseline gap-2 mt-2">
-    <span className="text-4xl sm:text-5xl font-black">
-    {latest ? `${batteryPct}%` : "--"}
-    </span>
-    <span className="text-sm font-semibold text-slate-500">
-    {latest?.battery_voltage ? `${latest.battery_voltage}V` : ""}
-    </span>
     </div>
     </div>
 

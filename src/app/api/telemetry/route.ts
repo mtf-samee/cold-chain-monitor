@@ -8,13 +8,12 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
     try {
-        const { temperature, battery_voltage } = await req.json();
+        const { temperature } = await req.json();
 
         let status = 'SAFE';
         if (temperature > 8.0 || temperature < 2.0) status = 'BREACH';
         else if (temperature >= 7.1 || temperature <= 2.9) status = 'WARNING';
 
-        // Check for an open incident
         const { data: activeIncidents } = await supabase
         .from('incidents')
         .select('*')
@@ -29,7 +28,6 @@ export async function POST(req: Request) {
             const isColdBreach = activeIncident.peak_temperature < 2.0;
             const isHotBreach = activeIncident.peak_temperature > 8.0;
 
-            // Hysteresis: Require definitive recovery to close breach
             const recoveredFromCold = isColdBreach && temperature >= 2.5;
             const recoveredFromHot = isHotBreach && temperature <= 7.5;
 
@@ -40,10 +38,7 @@ export async function POST(req: Request) {
                 .update({ end_time: new Date().toISOString() })
                 .eq('id', activeIncident.id);
             } else {
-                // Incident remains open; override minor warning/safe fluctuations during recovery
                 status = 'BREACH';
-
-                // Update peak extreme (highest for hot, lowest for cold)
                 let newPeak = activeIncident.peak_temperature;
                 if (isHotBreach && temperature > activeIncident.peak_temperature) newPeak = temperature;
                 if (isColdBreach && temperature < activeIncident.peak_temperature) newPeak = temperature;
@@ -64,12 +59,23 @@ export async function POST(req: Request) {
 
         await supabase.from('telemetry').insert([{
             temperature,
-            battery_voltage,
             status,
             event_type
         }]);
 
-        return NextResponse.json({ success: true });
+        let lastBreachFormatted = "--:--:--";
+        const { data: lastIncidentData } = await supabase
+        .from('incidents')
+        .select('start_time')
+        .order('start_time', { ascending: false })
+        .limit(1);
+
+        if (lastIncidentData && lastIncidentData.length > 0) {
+            const d = new Date(lastIncidentData[0].start_time);
+            lastBreachFormatted = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour12: false });
+        }
+
+        return NextResponse.json({ success: true, last_breach: lastBreachFormatted });
     } catch (error) {
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
