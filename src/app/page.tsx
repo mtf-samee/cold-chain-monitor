@@ -230,11 +230,14 @@ export default function Dashboard() {
     minPoint: Telemetry | null;
   }>(() => {
     let score = 100;
+
+    // LENIENT PENALTY LOGIC
     incidents.forEach(inc => {
-      score -= 10;
+      score -= 3; // Reduced flat penalty per incident
       const startMs = new Date(inc.start_time).getTime();
       const endMs = inc.end_time ? new Date(inc.end_time).getTime() : new Date().getTime();
-      score -= ((endMs - startMs) / 3600000) * 2;
+      // Reduced duration penalty to 0.5 points per hour
+      score -= ((endMs - startMs) / 3600000) * 0.5;
     });
 
     let sum = 0, max = -999, min = 999;
