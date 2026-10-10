@@ -63,16 +63,33 @@ export async function POST(req: Request) {
             event_type
         }]);
 
-        let lastBreachFormatted = "--:--:--";
+        // Fetch absolute latest incident for Date, Time, and Duration
+        let lastBreachFormatted = "--";
         const { data: lastIncidentData } = await supabase
         .from('incidents')
-        .select('start_time')
+        .select('*')
         .order('start_time', { ascending: false })
         .limit(1);
 
         if (lastIncidentData && lastIncidentData.length > 0) {
-            const d = new Date(lastIncidentData[0].start_time);
-            lastBreachFormatted = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour12: false });
+            const inc = lastIncidentData[0];
+            const d = new Date(inc.start_time);
+            const dhakaTime = new Date(d.getTime() + (6 * 60 * 60 * 1000));
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const month = months[dhakaTime.getUTCMonth()];
+            const day = dhakaTime.getUTCDate().toString().padStart(2, '0');
+            const hrs = dhakaTime.getUTCHours().toString().padStart(2, '0');
+            const mins = dhakaTime.getUTCMinutes().toString().padStart(2, '0');
+
+            // Calculate Duration
+            const startTimeMs = new Date(inc.start_time).getTime();
+            const endTimeMs = inc.end_time ? new Date(inc.end_time).getTime() : new Date().getTime();
+            const totalSecs = Math.floor((endTimeMs - startTimeMs) / 1000);
+            const durM = Math.floor(totalSecs / 60);
+            const durS = totalSecs % 60;
+            const durationStr = durM > 0 ? `${durM}m ${durS}s` : `${durS}s`;
+
+            lastBreachFormatted = `${month} ${day} ${hrs}:${mins} (${durationStr})`;
         }
 
         return NextResponse.json({ success: true, last_breach: lastBreachFormatted });
