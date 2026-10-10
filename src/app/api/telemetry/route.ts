@@ -63,7 +63,7 @@ export async function POST(req: Request) {
             event_type
         }]);
 
-        // Fetch absolute latest incident for Date, Time, and Duration
+        // Always fetch absolute latest incident for every request payload
         let lastBreachFormatted = "--";
         const { data: lastIncidentData } = await supabase
         .from('incidents')
@@ -78,18 +78,23 @@ export async function POST(req: Request) {
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             const month = months[dhakaTime.getUTCMonth()];
             const day = dhakaTime.getUTCDate().toString().padStart(2, '0');
+            const year = dhakaTime.getUTCFullYear();
             const hrs = dhakaTime.getUTCHours().toString().padStart(2, '0');
             const mins = dhakaTime.getUTCMinutes().toString().padStart(2, '0');
+            const secs = dhakaTime.getUTCSeconds().toString().padStart(2, '0');
 
-            // Calculate Duration
             const startTimeMs = new Date(inc.start_time).getTime();
             const endTimeMs = inc.end_time ? new Date(inc.end_time).getTime() : new Date().getTime();
             const totalSecs = Math.floor((endTimeMs - startTimeMs) / 1000);
-            const durM = Math.floor(totalSecs / 60);
+            const durH = Math.floor(totalSecs / 3600);
+            const durM = Math.floor((totalSecs % 3600) / 60);
             const durS = totalSecs % 60;
-            const durationStr = durM > 0 ? `${durM}m ${durS}s` : `${durS}s`;
 
-            lastBreachFormatted = `${month} ${day} ${hrs}:${mins} (${durationStr})`;
+            let durationStr = `${durS}s`;
+            if (durH > 0) durationStr = `${durH}h ${durM}m ${durS}s`;
+            else if (durM > 0) durationStr = `${durM}m ${durS}s`;
+
+            lastBreachFormatted = `${month} ${day}, ${year}|${hrs}:${mins}:${secs}|(${durationStr})`;
         }
 
         return NextResponse.json({ success: true, last_breach: lastBreachFormatted });
