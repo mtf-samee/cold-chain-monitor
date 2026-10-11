@@ -216,8 +216,8 @@ export default function Dashboard() {
       fetchLatest();
       fetchFilteredData();
 
-      const latestInterval = setInterval(fetchLatest, 10000);
-      const filterInterval = setInterval(fetchFilteredData, 30000);
+      const latestInterval = setInterval(fetchLatest, 5000);
+      const filterInterval = setInterval(fetchFilteredData, 10000);
       return () => { clearInterval(latestInterval); clearInterval(filterInterval); };
   }, [getBounds]);
 
