@@ -14,7 +14,7 @@ import {
 import {
   Activity, Clock, AlertTriangle, Wifi, WifiOff,
   ShieldCheck, ShieldAlert, ThermometerSnowflake,
-  MousePointerClick, XCircle, RotateCcw
+  MousePointerClick, XCircle, RotateCcw, Github
 } from "lucide-react";
 
 const supabase = createClient(
@@ -284,8 +284,8 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans">
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans flex flex-col">
+    <div className="max-w-7xl mx-auto space-y-6 flex-grow w-full">
 
     {/* Persistent Header */}
     <div className={`sticky top-0 sm:top-2 z-50 p-5 rounded-xl flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500 shadow-2xl border border-white/20 -mx-2 sm:mx-0 backdrop-blur-md`}>
@@ -582,6 +582,17 @@ export default function Dashboard() {
         </div>
         </div>
         </div>
+
+        {/* Footer section added here */}
+        <footer className="mt-8 pt-6 border-t border-slate-800/50 flex flex-col sm:flex-row items-center justify-between text-slate-500 text-sm">
+        <p>&copy; 2026 ARTEMIS. All rights reserved.</p>
+        <div className="flex items-center gap-2 mt-4 sm:mt-0">
+        <span>Built by ARTEMIS</span>
+        <a href="https://github.com/mtf-samee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors" aria-label="GitHub Profile">
+        <Github size={18} />
+        </a>
+        </div>
+        </footer>
 
         </div>
         </div>
