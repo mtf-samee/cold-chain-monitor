@@ -14,7 +14,7 @@ import {
 import {
   Activity, Clock, AlertTriangle, Wifi, WifiOff,
   ShieldCheck, ShieldAlert, ThermometerSnowflake,
-  MousePointerClick, XCircle, RotateCcw, Github
+  MousePointerClick, XCircle, RotateCcw
 } from "lucide-react";
 
 const supabase = createClient(
@@ -231,12 +231,10 @@ export default function Dashboard() {
   }>(() => {
     let score = 100;
 
-    // LENIENT PENALTY LOGIC
     incidents.forEach(inc => {
-      score -= 3; // Reduced flat penalty per incident
+      score -= 3;
       const startMs = new Date(inc.start_time).getTime();
       const endMs = inc.end_time ? new Date(inc.end_time).getTime() : new Date().getTime();
-      // Reduced duration penalty to 0.5 points per hour
       score -= ((endMs - startMs) / 3600000) * 0.5;
     });
 
@@ -287,7 +285,6 @@ export default function Dashboard() {
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 font-sans flex flex-col">
     <div className="max-w-7xl mx-auto space-y-6 flex-grow w-full">
 
-    {/* Persistent Header */}
     <div className={`sticky top-0 sm:top-2 z-50 p-5 rounded-xl flex items-center justify-between ${getStatusColor(latest?.status, isOffline)} transition-colors duration-500 shadow-2xl border border-white/20 -mx-2 sm:mx-0 backdrop-blur-md`}>
     <div>
     <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-md">Freeze Pharm</h1>
@@ -298,7 +295,6 @@ export default function Dashboard() {
     {isOffline ? <WifiOff size={32} className="text-white shrink-0 ml-4 opacity-80" /> : <Wifi size={32} className="text-white shrink-0 ml-4" />}
     </div>
 
-    {/* Top KPI Cards (Adjusted to 3 columns) */}
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mt-4">
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative overflow-hidden">
     <div className="flex items-center justify-between mb-2 text-slate-400">
@@ -336,7 +332,6 @@ export default function Dashboard() {
     </div>
     </div>
 
-    {/* Controls Panel */}
     <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-md flex flex-wrap gap-4 items-end">
     <div className="flex flex-col gap-1 w-full sm:w-auto">
     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Time Range</label>
@@ -419,7 +414,6 @@ export default function Dashboard() {
     </button>
     </div>
 
-    {/* Breach Log */}
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md overflow-hidden">
     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
     <h2 className="text-lg font-bold flex items-center gap-2 text-red-400 uppercase tracking-wider">
@@ -467,7 +461,6 @@ export default function Dashboard() {
     </div>
     </div>
 
-    {/* Temperature Graph & Stats */}
     <div ref={chartRef} className="grid grid-cols-1 lg:grid-cols-4 gap-6 scroll-mt-32">
     <div className="lg:col-span-3 bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md relative">
     <div className="flex items-center justify-between mb-6">
@@ -544,7 +537,6 @@ export default function Dashboard() {
     </div>
     </div>
 
-    {/* Period Analytics Panel */}
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md flex flex-col gap-4">
     <h2 className="text-lg font-bold flex items-center gap-2 uppercase tracking-wider text-slate-300 mb-2">
     <ThermometerSnowflake size={20} className="text-blue-400" /> Period Analytics
@@ -583,13 +575,15 @@ export default function Dashboard() {
         </div>
         </div>
 
-        {/* Footer section added here */}
         <footer className="mt-8 pt-6 border-t border-slate-800/50 flex flex-col sm:flex-row items-center justify-between text-slate-500 text-sm">
         <p>&copy; 2026 ARTEMIS. All rights reserved.</p>
         <div className="flex items-center gap-2 mt-4 sm:mt-0">
         <span>Built by ARTEMIS</span>
         <a href="https://github.com/mtf-samee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors" aria-label="GitHub Profile">
-        <Github size={18} />
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
+        <path d="M9 18c-4.51 2-5-2-7-2" />
+        </svg>
         </a>
         </div>
         </footer>
