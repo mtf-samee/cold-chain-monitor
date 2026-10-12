@@ -312,7 +312,7 @@ export default function Dashboard() {
 
     <div className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md">
     <div className="flex items-center justify-between mb-2 text-slate-400">
-    <span className="font-bold tracking-wider text-xs uppercase">Health Score</span>
+    <span className="font-bold tracking-wider text-xs uppercase">Management Score</span>
     {healthScore >= 80 ? <ShieldCheck size={20} className="text-green-500" /> : <ShieldAlert size={20} className="text-red-500" />}
     </div>
     <div className="flex items-baseline gap-2 mt-2">
